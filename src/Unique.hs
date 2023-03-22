@@ -6,6 +6,8 @@ import Data.Data (Data)
 import Data.IORef
 import System.IO.Unsafe
 
+import Util.Key
+
 
 newtype Unique = Unique Integer
   deriving (Data, Eq, Ord)
@@ -25,3 +27,7 @@ newUnique = do
 
 hashUnique :: Unique -> Integer
 hashUnique (Unique x) = x
+
+instance HasKey Unique where
+  getKey u = fromIntegral $! hashUnique u
+  fromKey i = Unique $! fromIntegral i

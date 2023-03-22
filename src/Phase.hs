@@ -1,5 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE TemplateHaskell    #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Phase (Phase, phaseNum, runtime, prior, Phased(..)) where
 
@@ -9,9 +11,18 @@ import Numeric.Natural
 
 import ShortShow
 
+import Util.Key
+
 newtype Phase = Phase { phaseNum :: Natural }
-  deriving (Data, Eq, Ord, Show)
+  deriving newtype (Eq, Ord, Show)
+  deriving stock Data
 makePrisms ''Phase
+
+instance HasKey Phase where
+  getKey (Phase n) = fromInteger $ toInteger n
+  fromKey i = Phase $! fromIntegral  i
+  {-# INLINE getKey  #-}
+  {-# INLINE fromKey #-}
 
 instance ShortShow Phase where
   shortShow (Phase i) = "p" ++ show i
