@@ -6,3 +6,4 @@ module Util.Key
 
 class HasKey a where
   getKey :: a -> Int
+  fromKey :: Int -> a
