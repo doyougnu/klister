@@ -10,7 +10,7 @@ module Pretty (Doc, Pretty(..), string, text, viaShow, (<+>), (<>), align, hang,
 
 import Control.Lens hiding (List)
 import Control.Monad.State
-import qualified Data.Map as Map
+import qualified Data.HashMap.Strict as HM
 import qualified Data.Set as Set
 import Data.Text.Prettyprint.Doc hiding (Pretty(..), angles, parens)
 import Data.Text (Text)
@@ -38,6 +38,8 @@ import Type
 import Unique
 import Value
 import World
+
+import qualified Util.Store as St
 
 text :: Text -> Doc ann
 text = PP.pretty
@@ -566,14 +568,14 @@ instance Pretty VarInfo a => Pretty VarInfo (World a) where
     vsep $ map (hang 4)
       [vsep [ text "Expanded modules"
             , vsep [ pp env m
-                   | (_, m) <- Map.toList (view worldModules w)
+                   | (_, m) <- HM.toList (view worldModules w)
                    ]
             ]
       , vsep [ text "Modules visited"
              , vsep [ hang 4 $
                       pp env mn <> line <>
                       text "{" <> group (vsep (map (pp env) ps)) <> text "}"
-                    | (mn, Set.toList -> ps) <- Map.toList (view worldVisited w)
+                    | (mn, Set.toList -> ps) <- HM.toList (view worldVisited w)
                     ]
              ]
       , vsep [ text "Environments"
@@ -581,7 +583,7 @@ instance Pretty VarInfo a => Pretty VarInfo (World a) where
                vsep [ hang 4 $
                       pp env p <> line <>
                       pp env rho
-                    | (p, rho) <- Map.toList $ view worldEnvironments w
+                    | (p, rho) <- St.toList $ view worldEnvironments w
                     ]
              ]
       ]
@@ -645,7 +647,7 @@ instance Pretty VarInfo BindingTable where
                                                 pp env b <+> text "@" <+>
                                                 pp env info
                                               | (scs, b, info) <- xs]) <> text "}"
-                    | (n, xs) <- Map.toList $ view bindings bs
+                    | (n, xs) <- HM.toList $ view bindings bs
                     ]
 
 punc :: Doc VarInfo -> [Doc VarInfo] -> [Doc VarInfo]
@@ -666,7 +668,7 @@ instance Pretty VarInfo ScopeSet where
       ppSet s =
         text "{" <> commaSep (map (pp env) (Set.toList s)) <> text "}"
       ppMap m =
-        group (vsep [group (viaShow k <+> text "↦" <> line <> v) | (k, v) <- Map.toList m])
+        group (vsep [group (viaShow k <+> text "↦" <> line <> v) | (k, v) <- HM.toList m])
 
 
 instance Pretty VarInfo KlisterPathError where

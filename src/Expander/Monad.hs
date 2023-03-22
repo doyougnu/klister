@@ -1,9 +1,13 @@
-{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE BlockArguments     #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE TemplateHaskell    #-}
+{-# LANGUAGE ViewPatterns       #-}
+{-# LANGUAGE DerivingStrategies #-}
+
+{-# OPTIONS_GHC -funbox-strict-fields #-}
+
 module Expander.Monad
   ( module Expander.Error
   , module Expander.DeclScope
@@ -150,8 +154,8 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Foldable
 import Data.IORef
-import Data.Map (Map)
-import qualified Data.Map as Map
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HM
 import Data.Maybe
 import Data.Monoid
 import Data.Text (Text)
@@ -189,6 +193,9 @@ import Unique
 import Value
 import World
 
+import Util.Store (Store)
+import qualified Util.Store as S
+
 newtype Expand a = Expand
   { runExpand :: ReaderT ExpanderContext (ExceptT ExpansionErr IO) a
   }
@@ -199,7 +206,7 @@ execExpand ctx act = runExceptT $ runReaderT (runExpand act) ctx
 
 
 newtype TaskID = TaskID Unique
-  deriving (Eq, Ord)
+  deriving newtype (Eq, Ord)
 
 instance Show TaskID where
   show (TaskID u) = "(TaskID " ++ show (hashUnique u) ++ ")"
@@ -212,7 +219,7 @@ newDeclOutputScopesPtr = DeclOutputScopesPtr <$> liftIO newUnique
 
 
 
-newtype ExpansionEnv = ExpansionEnv (Map.Map Binding EValue)
+newtype ExpansionEnv = ExpansionEnv (Store Binding EValue)
   deriving (Semigroup, Monoid)
 
 data EValue
@@ -242,7 +249,7 @@ data ExpanderContext = ExpanderContext
 data ExpanderLocal = ExpanderLocal
   { _expanderModuleName :: !ModuleName
   , _expanderPhase :: !Phase
-  , _expanderBindingLevels :: !(Map Phase BindingLevel)
+  , _expanderBindingLevels :: !(Store Phase BindingLevel)
   , _expanderVarTypes :: TypeContext Var SchemePtr
   , _expanderKlisterPath :: !KlisterPath
   , _expanderImportStack :: [ModuleName]
@@ -254,90 +261,90 @@ mkInitContext mn here = do
   st <- newIORef $! initExpanderState here
   return $ ExpanderContext { _expanderState = st
                            , _expanderLocal = ExpanderLocal
-                             { _expanderModuleName = mn
-                             , _expanderPhase = runtime
-                             , _expanderBindingLevels = Map.empty
-                             , _expanderVarTypes = mempty
+                             { _expanderModuleName  = mn
+                             , _expanderPhase       = runtime
+                             , _expanderBindingLevels = mempty
+                             , _expanderVarTypes    = mempty
                              , _expanderKlisterPath = kPath
                              , _expanderImportStack = []
                              }
                            }
 
 data ExpanderState = ExpanderState
-  { _expanderWorld :: !(World Value)
-  , _expanderNextScopeNum :: !Int
+  { _expanderWorld              :: !(World Value)
+  , _expanderNextScopeNum       :: !Int
   , _expanderGlobalBindingTable :: !BindingTable
-  , _expanderExpansionEnv :: !ExpansionEnv
-  , _expanderTasks :: [(TaskID, ExpanderLocal, ExpanderTask)]
-  , _expanderOriginLocations :: !(Map.Map SplitCorePtr SrcLoc)
-  , _expanderCompletedCore :: !(Map.Map SplitCorePtr (CoreF TypePatternPtr PatternPtr SplitCorePtr))
-  , _expanderCompletedPatterns :: !(Map.Map PatternPtr (ConstructorPatternF PatternPtr))
-  , _expanderCompletedTypePatterns :: !(Map.Map TypePatternPtr TypePattern)
-  , _expanderPatternBinders :: !(Map.Map PatternPtr (Either [PatternPtr] (Scope, Ident, Var, SchemePtr)))
-  , _expanderTypePatternBinders :: !(Map.Map TypePatternPtr [(Scope, Ident, Var, SchemePtr)])
-  , _expanderCompletedTypes :: !(Map.Map SplitTypePtr (TyF SplitTypePtr))
-  , _expanderCompletedDeclTrees :: !(Map.Map DeclTreePtr (DeclTreeF DeclPtr DeclTreePtr))
-  , _expanderCompletedDecls :: !(Map.Map DeclPtr (Decl SplitTypePtr SchemePtr DeclTreePtr SplitCorePtr))
-  , _expanderModuleTop :: !(Maybe DeclTreePtr)
-  , _expanderModuleImports :: !Imports
-  , _expanderModuleExports :: !Exports
-  , _expanderPhaseRoots :: !(Map Phase Scope)
-  , _expanderModuleRoots :: !(Map ModuleName Scope)
-  , _expanderKernelBindings :: !BindingTable
-  , _expanderKernelExports :: !Exports
-  , _expanderKernelDatatypes :: !(Map Datatype DatatypeInfo)
-  , _expanderKernelConstructors :: !(Map Constructor (ConstructorInfo Ty))
-  , _expanderKernelValues :: !(Env Var (SchemePtr, Value))
-  , _expanderDeclOutputScopes :: !(Map DeclOutputScopesPtr ScopeSet)
-  , _expanderCurrentEnvs :: !(Map Phase (Env Var Value))
-  , _expanderCurrentTransformerEnvs :: !(Map Phase (Env MacroVar Value))
-  , _expanderCurrentDatatypes :: !(Map Phase (Map Datatype DatatypeInfo))
-  , _expanderCurrentConstructors :: !(Map Phase (Map Constructor (ConstructorInfo Ty)))
+  , _expanderExpansionEnv       :: !ExpansionEnv
+  , _expanderTasks              :: [(TaskID, ExpanderLocal, ExpanderTask)]
+  , _expanderOriginLocations    :: !(Store SplitCorePtr SrcLoc)
+  , _expanderCompletedCore      :: !(Store SplitCorePtr (CoreF TypePatternPtr PatternPtr SplitCorePtr))
+  , _expanderCompletedPatterns  :: !(Store PatternPtr (ConstructorPatternF PatternPtr))
+  , _expanderCompletedTypePatterns :: !(Store TypePatternPtr TypePattern)
+  , _expanderPatternBinders     :: !(Store PatternPtr (Either [PatternPtr] (Scope, Ident, Var, SchemePtr)))
+  , _expanderTypePatternBinders :: !(Store TypePatternPtr [(Scope, Ident, Var, SchemePtr)])
+  , _expanderCompletedTypes     :: !(Store SplitTypePtr (TyF SplitTypePtr))
+  , _expanderCompletedDeclTrees :: !(Store DeclTreePtr (DeclTreeF DeclPtr DeclTreePtr))
+  , _expanderCompletedDecls     :: !(Store DeclPtr (Decl SplitTypePtr SchemePtr DeclTreePtr SplitCorePtr))
+  , _expanderModuleTop          :: !(Maybe DeclTreePtr)
+  , _expanderModuleImports      :: !Imports
+  , _expanderModuleExports      :: !Exports
+  , _expanderPhaseRoots         :: !(Store Phase Scope)
+  , _expanderModuleRoots        :: !(HashMap ModuleName Scope)
+  , _expanderKernelBindings     :: !BindingTable
+  , _expanderKernelExports      :: !Exports
+  , _expanderKernelDatatypes    :: !(HashMap Datatype DatatypeInfo)
+  , _expanderKernelConstructors :: !(HashMap Constructor (ConstructorInfo Ty))
+  , _expanderKernelValues       :: !(Env Var (SchemePtr, Value))
+  , _expanderDeclOutputScopes   :: !(Store DeclOutputScopesPtr ScopeSet)
+  , _expanderCurrentEnvs        :: !(Store Phase (Env Var Value))
+  , _expanderCurrentTransformerEnvs :: !(Store Phase (Env MacroVar Value))
+  , _expanderCurrentDatatypes   :: !(Store Phase (HashMap Datatype DatatypeInfo))
+  , _expanderCurrentConstructors :: !(Store Phase (HashMap Constructor (ConstructorInfo Ty)))
   , _expanderCurrentBindingTable :: !BindingTable
-  , _expanderExpressionTypes :: !(Map SplitCorePtr Ty)
-  , _expanderCompletedSchemes :: !(Map SchemePtr (Scheme Ty))
-  , _expanderTypeStore :: !(TypeStore Ty)
-  , _expanderKindStore :: !KindStore
-  , _expanderDefTypes :: !(TypeContext Var SchemePtr) -- ^ Module-level definitions
+  , _expanderExpressionTypes    :: !(Store SplitCorePtr Ty)
+  , _expanderCompletedSchemes   :: !(Store SchemePtr (Scheme Ty))
+  , _expanderTypeStore          :: !(TypeStore Ty)
+  , _expanderKindStore          :: !KindStore
+  , _expanderDefTypes           :: !(TypeContext Var SchemePtr) -- ^ Module-level definitions
   }
 
 initExpanderState :: FilePath -> ExpanderState
 initExpanderState here = ExpanderState
-  { _expanderWorld = initialWorld here
+  { _expanderWorld        = initialWorld here
   , _expanderNextScopeNum = 0
   , _expanderGlobalBindingTable = mempty
-  , _expanderExpansionEnv = mempty
-  , _expanderTasks = []
-  , _expanderOriginLocations = Map.empty
-  , _expanderCompletedCore = Map.empty
-  , _expanderCompletedPatterns = Map.empty
-  , _expanderCompletedTypePatterns = Map.empty
-  , _expanderPatternBinders = Map.empty
-  , _expanderTypePatternBinders = Map.empty
-  , _expanderCompletedTypes = Map.empty
-  , _expanderCompletedDeclTrees = Map.empty
-  , _expanderCompletedDecls = Map.empty
-  , _expanderModuleTop = Nothing
-  , _expanderModuleImports = noImports
-  , _expanderModuleExports = noExports
-  , _expanderPhaseRoots = Map.empty
-  , _expanderModuleRoots = Map.empty
-  , _expanderKernelBindings = mempty
-  , _expanderKernelExports = noExports
-  , _expanderKernelDatatypes = mempty
+  , _expanderExpansionEnv       = mempty
+  , _expanderTasks              = mempty
+  , _expanderOriginLocations    = mempty
+  , _expanderCompletedCore      = mempty
+  , _expanderCompletedPatterns  = mempty
+  , _expanderCompletedTypePatterns = mempty
+  , _expanderPatternBinders     = mempty
+  , _expanderTypePatternBinders = mempty
+  , _expanderCompletedTypes     = mempty
+  , _expanderCompletedDeclTrees = mempty
+  , _expanderCompletedDecls     = mempty
+  , _expanderModuleTop          = Nothing
+  , _expanderModuleImports      = noImports
+  , _expanderModuleExports      = noExports
+  , _expanderPhaseRoots         = mempty
+  , _expanderModuleRoots        = mempty
+  , _expanderKernelBindings     = mempty
+  , _expanderKernelExports      = noExports
+  , _expanderKernelDatatypes    = mempty
   , _expanderKernelConstructors = mempty
-  , _expanderKernelValues = mempty
-  , _expanderDeclOutputScopes = Map.empty
-  , _expanderCurrentEnvs = Map.empty
-  , _expanderCurrentTransformerEnvs = Map.empty
-  , _expanderCurrentDatatypes = Map.empty
-  , _expanderCurrentConstructors = Map.empty
+  , _expanderKernelValues       = mempty
+  , _expanderDeclOutputScopes   = mempty
+  , _expanderCurrentEnvs        = mempty
+  , _expanderCurrentTransformerEnvs = mempty
+  , _expanderCurrentDatatypes    = mempty
+  , _expanderCurrentConstructors = mempty
   , _expanderCurrentBindingTable = mempty
-  , _expanderExpressionTypes = Map.empty
-  , _expanderCompletedSchemes = Map.empty
-  , _expanderTypeStore = mempty
-  , _expanderKindStore = mempty
-  , _expanderDefTypes = mempty
+  , _expanderExpressionTypes     = mempty
+  , _expanderCompletedSchemes    = mempty
+  , _expanderTypeStore           = mempty
+  , _expanderKindStore           = mempty
+  , _expanderDefTypes            = mempty
   }
 
 makeLenses ''ExpanderContext
@@ -390,7 +397,7 @@ moduleScope mn = do
 moduleScope' :: ModuleName -> Expand Scope
 moduleScope' mn = do
   mods <- view expanderModuleRoots <$> getState
-  case Map.lookup mn mods of
+  case HM.lookup mn mods of
     Just sc -> return sc
     Nothing -> do
       sc <- freshScope $ T.pack $ "Module root for " ++ shortShow mn
@@ -402,7 +409,7 @@ phaseRoot :: Expand Scope
 phaseRoot = do
   roots <- view expanderPhaseRoots <$> getState
   p <- currentPhase
-  case Map.lookup p roots of
+  case HM.lookup p roots of
     Just sc -> return sc
     Nothing -> do
       sc <- freshScope $ T.pack $ "Root for phase " ++ shortShow p
@@ -417,28 +424,28 @@ makePrisms ''ExpanderTask
 
 linkExpr :: SplitCorePtr -> CoreF TypePatternPtr PatternPtr SplitCorePtr -> Expand ()
 linkExpr dest layer =
-  modifyState $ over expanderCompletedCore (<> Map.singleton dest layer)
+  modifyState $ over expanderCompletedCore (<> S.singleton dest layer)
 
 linkPattern :: PatternPtr -> ConstructorPatternF PatternPtr -> Expand ()
 linkPattern dest pat =
-  modifyState $ over expanderCompletedPatterns (<> Map.singleton dest pat)
+  modifyState $ over expanderCompletedPatterns (<> S.singleton dest pat)
 
 linkTypePattern :: TypePatternPtr -> TypePattern -> [(Scope, Ident, Var, SchemePtr)] -> Expand ()
 linkTypePattern dest pat vars = do
   modifyState $ set (expanderTypePatternBinders . at dest) $ Just vars
-  modifyState $ over expanderCompletedTypePatterns (<> Map.singleton dest pat)
+  modifyState $ over expanderCompletedTypePatterns (<> S.singleton dest pat)
 
 linkDeclTree :: DeclTreePtr -> DeclTreeF DeclPtr DeclTreePtr -> Expand ()
 linkDeclTree dest declTreeF =
-  modifyState $ over expanderCompletedDeclTrees $ (<> Map.singleton dest declTreeF)
+  modifyState $ over expanderCompletedDeclTrees $ (<> S.singleton dest declTreeF)
 
 linkDecl :: DeclPtr -> Decl SplitTypePtr SchemePtr DeclTreePtr SplitCorePtr -> Expand ()
 linkDecl dest decl =
-  modifyState $ over expanderCompletedDecls $ (<> Map.singleton dest decl)
+  modifyState $ over expanderCompletedDecls $ (<> S.singleton dest decl)
 
 linkDeclOutputScopes :: DeclOutputScopesPtr -> ScopeSet -> Expand ()
 linkDeclOutputScopes dest scopeSet =
-  modifyState $ over expanderDeclOutputScopes $ (<> Map.singleton dest scopeSet)
+  modifyState $ over expanderDeclOutputScopes $ (<> S.singleton dest scopeSet)
 
 linkOneDecl :: DeclTreePtr -> Decl SplitTypePtr SchemePtr DeclTreePtr SplitCorePtr -> Expand ()
 linkOneDecl declTreeDest decl = do
@@ -448,16 +455,16 @@ linkOneDecl declTreeDest decl = do
 
 linkType :: SplitTypePtr -> TyF SplitTypePtr -> Expand ()
 linkType dest ty =
-  modifyState $ over expanderCompletedTypes (<> Map.singleton dest ty)
+  modifyState $ over expanderCompletedTypes (<> S.singleton dest ty)
 
 linkScheme :: SchemePtr -> Scheme Ty -> Expand ()
 linkScheme ptr sch =
-  modifyState $ over expanderCompletedSchemes (<> Map.singleton ptr sch)
+  modifyState $ over expanderCompletedSchemes (<> S.singleton ptr sch)
 
 linkStatus :: SplitCorePtr -> Expand (Maybe (CoreF TypePatternPtr PatternPtr SplitCorePtr))
 linkStatus slot = do
   complete <- view expanderCompletedCore <$> getState
-  return $ Map.lookup slot complete
+  return $ S.lookup slot complete
 
 linkedCore :: SplitCorePtr -> Expand (Maybe Core)
 linkedCore slot =
@@ -720,7 +727,7 @@ freshDatatype (Stx _ _ hint) = do
     go ph mn n = do
       let attempt = hint <> maybe "" (T.pack . show) n
       let candidate = Datatype { _datatypeName = DatatypeName attempt, _datatypeModule = mn }
-      found <- view (expanderCurrentDatatypes . at ph . non Map.empty . at candidate) <$> getState
+      found <- view (expanderCurrentDatatypes . at ph . non HM.empty . at candidate) <$> getState
       case found of
         Nothing -> return candidate
         Just _ -> go ph mn (Just (maybe 0 (1+) n))
@@ -736,7 +743,7 @@ freshConstructor (Stx _ _ hint) = do
     go ph mn n = do
       let attempt = hint <> maybe "" (T.pack . show) n
       let candidate = Constructor { _constructorName = ConstructorName attempt, _constructorModule = mn }
-      found <- view (expanderCurrentConstructors . at ph . non Map.empty . at candidate) <$> getState
+      found <- view (expanderCurrentConstructors . at ph . non HM.empty . at candidate) <$> getState
       case found of
         Nothing -> return candidate
         Just _ -> go ph mn (Just (maybe 0 (1+) n))

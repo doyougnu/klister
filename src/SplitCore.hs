@@ -19,7 +19,6 @@ coalescing a 'SplitCore' expression into a fully-formed 'Core' expression.
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE RoleAnnotations #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE DerivingStrategies #-}
 
@@ -29,14 +28,13 @@ import Prelude hiding (lookup)
 import Control.Lens hiding (children)
 import Control.Monad.Except
 import Control.Monad.Writer
-import Data.IntMap.Strict (IntMap)
-import qualified Data.IntMap.Strict as IM
 
 import Core
 import PartialCore
 import Unique
 
 import Util.Key
+import Util.Store
 
 newtype SplitCorePtr = SplitCorePtr Unique
   deriving newtype (Eq, Ord)
@@ -83,21 +81,11 @@ instance Show TypePatternPtr where
 newTypePatternPtr :: IO TypePatternPtr
 newTypePatternPtr = TypePatternPtr <$> newUnique
 
-newtype SplitCoreGraph p v = SplitCoreGraph { unSCGraph :: IntMap v}
-  deriving newtype (Semigroup, Monoid)
-type role SplitCoreGraph representational _
-
-lookup :: HasKey p => p -> SplitCoreGraph p v -> Maybe v
-lookup ptr graph = getKey ptr `IM.lookup` unSCGraph graph
-
-singleton :: HasKey p => p -> v -> SplitCoreGraph p v
-singleton ptr val = SplitCoreGraph $! IM.singleton (getKey ptr) val
-
 data SplitCore = SplitCore
   { _splitCoreRoot         :: SplitCorePtr
-  , _splitCoreDescendants  :: SplitCoreGraph SplitCorePtr (CoreF TypePatternPtr PatternPtr SplitCorePtr)
-  , _splitCorePatterns     :: SplitCoreGraph PatternPtr (ConstructorPatternF PatternPtr)
-  , _splitCoreTypePatterns :: SplitCoreGraph TypePatternPtr TypePattern
+  , _splitCoreDescendants  :: Store SplitCorePtr (CoreF TypePatternPtr PatternPtr SplitCorePtr)
+  , _splitCorePatterns     :: Store PatternPtr (ConstructorPatternF PatternPtr)
+  , _splitCoreTypePatterns :: Store TypePatternPtr TypePattern
   }
 makeLenses ''SplitCore
 
@@ -127,9 +115,9 @@ split partialCore = do
     go ::
       SplitCorePtr ->
       Maybe (CoreF (Maybe TypePattern) PartialPattern PartialCore) ->
-      WriterT (SplitCoreGraph SplitCorePtr (CoreF TypePatternPtr PatternPtr SplitCorePtr),
-               SplitCoreGraph PatternPtr (ConstructorPatternF PatternPtr),
-               SplitCoreGraph TypePatternPtr TypePattern)
+      WriterT (Store SplitCorePtr (CoreF TypePatternPtr PatternPtr SplitCorePtr),
+               Store PatternPtr (ConstructorPatternF PatternPtr),
+               Store TypePatternPtr TypePattern)
         IO
         ()
     go _     Nothing = pure ()
@@ -145,9 +133,9 @@ split partialCore = do
     pat ::
       PartialPattern ->
       WriterT
-        (SplitCoreGraph SplitCorePtr (CoreF TypePatternPtr PatternPtr SplitCorePtr),
-         SplitCoreGraph PatternPtr (ConstructorPatternF PatternPtr),
-         SplitCoreGraph TypePatternPtr TypePattern)
+        (Store SplitCorePtr (CoreF TypePatternPtr PatternPtr SplitCorePtr),
+         Store PatternPtr (ConstructorPatternF PatternPtr),
+         Store TypePatternPtr TypePattern)
         IO
         PatternPtr
     pat (PartialPattern Nothing) = liftIO newPatternPtr
@@ -160,9 +148,9 @@ split partialCore = do
     tpat ::
       Maybe TypePattern ->
       WriterT
-        (SplitCoreGraph SplitCorePtr (CoreF TypePatternPtr PatternPtr SplitCorePtr),
-         SplitCoreGraph PatternPtr (ConstructorPatternF PatternPtr),
-         SplitCoreGraph TypePatternPtr TypePattern)
+        (Store SplitCorePtr (CoreF TypePatternPtr PatternPtr SplitCorePtr),
+         Store PatternPtr (ConstructorPatternF PatternPtr),
+         Store TypePatternPtr TypePattern)
         IO
         TypePatternPtr
     tpat Nothing = liftIO newTypePatternPtr

@@ -54,6 +54,8 @@ type instance IxValue (Env v a) = (Ident, a)
 
 instance HasKey v => Ixed (Env v a) where
   ix var f (Env env) = Env <$> ix (getKey var) f env
+  {-# INLINE ix #-}
 
 instance HasKey v => At (Env v a) where
   at x f (Env env) = Env <$> at (getKey x) f env
+  {-# INLINE at #-}
