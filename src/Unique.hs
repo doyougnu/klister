@@ -12,11 +12,11 @@ import Data.Hashable
 import Util.Key
 
 
-newtype Unique = Unique Integer
+newtype Unique = Unique Int
   deriving newtype (Eq, Ord, Hashable)
   deriving stock Data
 
-uniqSource :: IORef Integer
+uniqSource :: IORef Int
 uniqSource = unsafePerformIO (newIORef 0)
 {-# NOINLINE uniqSource #-}
 
@@ -29,9 +29,9 @@ newUnique = do
   r <- atomicModifyIORef' uniqSource $ \x -> let z = x+1 in (z,z)
   return (Unique r)
 
-hashUnique :: Unique -> Integer
+hashUnique :: Unique -> Int
 hashUnique (Unique x) = x
 
 instance HasKey Unique where
-  getKey u = fromIntegral $! hashUnique u
-  fromKey i = Unique $! fromIntegral i
+  getKey u = hashUnique u
+  fromKey i = Unique $! i

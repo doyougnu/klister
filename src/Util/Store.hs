@@ -35,8 +35,6 @@ import Control.Arrow (first)
 
 import Util.Key
 import Phase
-import Data.Coerce (coerce)
-import GHC.Base (Coercible)
 
 newtype Store p v = Store { unStore :: IntMap v}
   deriving newtype (Eq, Ord, Show, Semigroup, Monoid, Functor, Foldable)
@@ -45,14 +43,6 @@ type role Store representational _
 
 instance Traversable (Store p) where
   traverse f s = Store <$> traverse f (unStore s)
-
--- instance (HasKey p, Coercible p Int) => FoldableWithIndex p (Store p) where
---     ifoldMap f s = IM.foldMapWithKey (f . coerce) (unStore s)
---     {-# INLINE ifoldMap #-}
---     ifoldr f acc s = IM.foldrWithKey (f . coerce) acc (unStore s)
---     {-# INLINE ifoldr #-}
---     ifoldl' f acc s = IM.foldlWithKey' (\e k ac -> f (coerce k) e ac) acc (unStore s)
---     {-# INLINE ifoldl' #-}
 
 instance  FoldableWithIndex Phase (Store p) where
     ifoldMap f s = IM.foldMapWithKey (f . Phase . fromIntegral  . toInteger) (unStore s)
