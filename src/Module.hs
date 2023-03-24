@@ -2,6 +2,8 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Module (
     Module(..)
   , moduleName
@@ -59,6 +61,7 @@ import Syntax.SrcLoc
 import Type
 import Unique
 
+import Util.Key
 
 newtype ModulePtr = ModulePtr Unique
   deriving (Eq, Ord)
@@ -180,7 +183,7 @@ instance (Functor f, Phased a) => Phased (Module f a) where
 
 
 newtype DeclPtr = DeclPtr Unique
-  deriving (Eq, Ord)
+  deriving newtype (Eq, Ord, HasKey)
 
 instance Show DeclPtr where
   show (DeclPtr u) = "(DeclPtr " ++ show (hashUnique u) ++ ")"
@@ -215,7 +218,7 @@ instance (Phased decl, Phased expr) => Phased (Decl ty scheme decl expr) where
   shift i = bimap (shift i) (shift i)
 
 newtype DeclTreePtr = DeclTreePtr Unique
-  deriving (Eq, Ord)
+  deriving newtype (Eq, Ord, HasKey)
 
 instance Show DeclTreePtr where
   show (DeclTreePtr u) = "(DeclTreePtr " ++ show (hashUnique u) ++ ")"

@@ -5,7 +5,10 @@
 {-# LANGUAGE RoleAnnotations    #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TypeFamilies       #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE RankNTypes         #-}
+{-# LANGUAGE StandaloneDeriving #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
 
 -- | wrapper over IntMap for our purposes
@@ -43,18 +46,18 @@ type role Store representational _
 instance Traversable (Store p) where
   traverse f s = Store <$> traverse f (unStore s)
 
-instance (HasKey p, Coercible p Int) => FoldableWithIndex p (Store p) where
-    ifoldMap f s = IM.foldMapWithKey (f . coerce) (unStore s)
-    {-# INLINE ifoldMap #-}
-    ifoldr f acc s = IM.foldrWithKey (f . coerce) acc (unStore s)
-    {-# INLINE ifoldr #-}
-    ifoldl' f acc s = IM.foldlWithKey' (\e k ac -> f (coerce k) e ac) acc (unStore s)
-    {-# INLINE ifoldl' #-}
+-- instance (HasKey p, Coercible p Int) => FoldableWithIndex p (Store p) where
+--     ifoldMap f s = IM.foldMapWithKey (f . coerce) (unStore s)
+--     {-# INLINE ifoldMap #-}
+--     ifoldr f acc s = IM.foldrWithKey (f . coerce) acc (unStore s)
+--     {-# INLINE ifoldr #-}
+--     ifoldl' f acc s = IM.foldlWithKey' (\e k ac -> f (coerce k) e ac) acc (unStore s)
+--     {-# INLINE ifoldl' #-}
 
-instance HasKey p => FoldableWithIndex Natural (Store p) where
-    ifoldMap f s = IM.foldMapWithKey (f . fromIntegral  . toInteger) (unStore s)
+instance  FoldableWithIndex Phase (Store p) where
+    ifoldMap f s = IM.foldMapWithKey (f . Phase . fromIntegral  . toInteger) (unStore s)
     {-# INLINE ifoldMap #-}
-    ifoldr f acc s = IM.foldrWithKey (f . fromIntegral  . toInteger) acc (unStore s)
+    ifoldr f acc s = IM.foldrWithKey (f . Phase . fromIntegral  . toInteger) acc (unStore s)
     {-# INLINE ifoldr #-}
     ifoldl' f acc s = IM.foldlWithKey' (\e k ac -> f (fromIntegral k) e ac) acc (unStore s)
     {-# INLINE ifoldl' #-}

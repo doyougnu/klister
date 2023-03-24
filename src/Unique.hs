@@ -1,16 +1,20 @@
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 -- | A drop-in replacement for Data.Unique which has a Data instance.
 module Unique (Unique, newUnique, hashUnique) where
 
 import Data.Data (Data)
 import Data.IORef
 import System.IO.Unsafe
+import Data.Hashable
 
 import Util.Key
 
 
 newtype Unique = Unique Integer
-  deriving (Data, Eq, Ord)
+  deriving newtype (Eq, Ord, Hashable)
+  deriving stock Data
 
 uniqSource :: IORef Integer
 uniqSource = unsafePerformIO (newIORef 0)

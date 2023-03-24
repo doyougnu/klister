@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Phase (Phase, phaseNum, runtime, prior, Phased(..)) where
+module Phase (Phase(..), phaseNum, runtime, prior, Phased(..)) where
 
 import Control.Lens
 import Data.Data (Data)
@@ -14,7 +14,7 @@ import ShortShow
 import Util.Key
 
 newtype Phase = Phase { phaseNum :: Natural }
-  deriving newtype (Eq, Ord, Show)
+  deriving newtype (Eq, Ord, Show, Num)
   deriving stock Data
 makePrisms ''Phase
 

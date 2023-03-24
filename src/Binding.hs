@@ -7,6 +7,7 @@ module Binding where
 
 import Control.Lens
 import Data.Data (Data)
+import Data.Hashable
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import ScopeSet
@@ -21,7 +22,7 @@ import Unique
 import Util.Key
 
 newtype Binding = Binding Unique
-  deriving newtype (Eq, Ord)
+  deriving newtype (Eq, Ord, Hashable)
   deriving stock Data
 
 instance HasKey Binding where

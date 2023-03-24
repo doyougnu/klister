@@ -668,7 +668,7 @@ instance Pretty VarInfo ScopeSet where
       ppSet s =
         text "{" <> commaSep (map (pp env) (Set.toList s)) <> text "}"
       ppMap m =
-        group (vsep [group (viaShow k <+> text "↦" <> line <> v) | (k, v) <- HM.toList m])
+        group (vsep [group (viaShow k <+> text "↦" <> line <> v) | (k, v) <- St.toList m])
 
 
 instance Pretty VarInfo KlisterPathError where

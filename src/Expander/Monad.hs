@@ -409,7 +409,7 @@ phaseRoot :: Expand Scope
 phaseRoot = do
   roots <- view expanderPhaseRoots <$> getState
   p <- currentPhase
-  case HM.lookup p roots of
+  case S.lookup p roots of
     Just sc -> return sc
     Nothing -> do
       sc <- freshScope $ T.pack $ "Root for phase " ++ shortShow p
@@ -751,8 +751,8 @@ freshConstructor (Stx _ _ hint) = do
 constructorInfo :: Constructor -> Expand (ConstructorInfo Ty)
 constructorInfo ctor = do
   p <- currentPhase
-  fromWorld <- view (expanderWorld . worldConstructors . at p . non Map.empty . at ctor) <$> getState
-  fromModule <- view (expanderCurrentConstructors . at p . non Map.empty . at ctor) <$> getState
+  fromWorld <- view (expanderWorld . worldConstructors . at p . non mempty . at ctor) <$> getState
+  fromModule <- view (expanderCurrentConstructors . at p . non mempty . at ctor) <$> getState
   case fromWorld <|> fromModule of
     Nothing ->
       throwError $ InternalError $ "Unknown constructor " ++ show ctor
@@ -761,8 +761,8 @@ constructorInfo ctor = do
 datatypeInfo :: Datatype -> Expand DatatypeInfo
 datatypeInfo datatype = do
   p <- currentPhase
-  fromWorld <- view (expanderWorld . worldDatatypes . at p . non Map.empty . at datatype) <$> getState
-  fromModule <- view (expanderCurrentDatatypes . at p . non Map.empty . at datatype) <$> getState
+  fromWorld <- view (expanderWorld . worldDatatypes . at p . non mempty . at datatype) <$> getState
+  fromModule <- view (expanderCurrentDatatypes . at p . non mempty . at datatype) <$> getState
   case fromWorld <|> fromModule of
     Nothing ->
       throwError $ InternalError $ "Unknown datatype " ++ show datatype
@@ -773,7 +773,7 @@ bind b v =
   modifyState $
   over expanderExpansionEnv $
   \(ExpansionEnv env) ->
-    ExpansionEnv $ Map.insert b v env
+    ExpansionEnv $ S.insert b v env
 
 -- | Add a binding to the current module's table
 addBinding :: Ident -> Binding -> BindingInfo SrcLoc -> Expand ()

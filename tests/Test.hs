@@ -8,7 +8,7 @@ module Main where
 
 import Control.Lens hiding (List)
 import Control.Monad
-import qualified Data.Map as Map
+import qualified Data.HashMap.Strict as HM
 import Control.Monad.IO.Class (liftIO)
 import Data.Maybe (maybeToList)
 import Data.Text (Text)
@@ -523,7 +523,7 @@ testFile f p = do
           Just (KernelModule _) ->
             assertFailure "Expected user module, got kernel"
           Just (Expanded m _) ->
-            case Map.lookup mn (view worldEvaluated w) of
+            case HM.lookup mn (view worldEvaluated w) of
               Nothing -> assertFailure "Module values not in its own expansion"
               Just evalResults ->
                 p m [val | ExampleResult _ _ _ _ val <- evalResults]
