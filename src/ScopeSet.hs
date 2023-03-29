@@ -94,7 +94,7 @@ member :: Phase -> Scope -> ScopeSet -> Bool
 member p sc scs = sc `Set.member` (scopes p scs)
 
 instance Phased ScopeSet where
-  shift j = over phaseScopes $ St.shiftKeys j
+  shift j = over phaseScopes $ St.mapKeys (+ Phase j)
 
 isSubsetOf :: Phase -> ScopeSet -> ScopeSet -> Bool
 isSubsetOf p scs1 scs2 =

@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE BangPatterns #-}
 -- | A drop-in replacement for Data.Unique which has a Data instance.
 module Unique (Unique, newUnique, hashUnique) where
 
@@ -26,7 +27,7 @@ uniqSource = unsafePerformIO (newIORef 0)
 -- times 'newUnique' may be called.
 newUnique :: IO Unique
 newUnique = do
-  r <- atomicModifyIORef' uniqSource $ \x -> let z = x+1 in (z,z)
+  r <- atomicModifyIORef' uniqSource $ \x -> let !z = x+1 in (z,z)
   return (Unique r)
 
 hashUnique :: Unique -> Int

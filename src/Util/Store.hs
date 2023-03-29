@@ -21,14 +21,14 @@ module Util.Store
   , fromList
   , Store
   , unionWith
-  , shiftKeys
+  , mapKeys
+  , mapMaybeWithKey
   )
 where
 
 import Prelude hiding (lookup)
 import Control.Lens
 import Data.Data (Data)
-import Numeric.Natural
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IM
 import Control.Arrow (first)
@@ -89,8 +89,8 @@ alterF f k s = Store <$> IM.alterF f (getKey k) (unStore s)
 unionWith :: (v -> v -> v) -> Store p v -> Store p v -> Store p v
 unionWith f l r = Store $! IM.unionWith f (unStore l) (unStore r)
 
--- unfortunately we cannat expose IM.mapKeys without leaking the implementation
--- out of this module. So we simply provide a shift operation for now.
-shiftKeys :: Phased p => Natural -> Store p v -> Store p v
-shiftKeys n s = Store $! IM.mapKeys go (unStore s)
-  where go i = i + (fromIntegral $! toInteger n)
+mapMaybeWithKey :: HasKey p => (p -> a -> Maybe b) -> Store p a -> Store p b
+mapMaybeWithKey f s = Store $! IM.mapMaybeWithKey (f . fromKey) (unStore s)
+
+mapKeys :: HasKey p => (p -> p) -> Store p v -> Store p v
+mapKeys f s = Store $! IM.mapKeys (getKey . f . fromKey) (unStore s)

@@ -7,6 +7,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 
 {-# OPTIONS_GHC -funbox-strict-fields #-}
+{-# LANGUAGE BangPatterns #-}
 
 module Expander.Monad
   ( module Expander.Error
@@ -158,6 +159,7 @@ import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Data.Maybe
 import Data.Monoid
+import Data.List
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Traversable
@@ -360,13 +362,13 @@ getState = view expanderState <$> expanderContext >>= liftIO . readIORef
 
 modifyState :: (ExpanderState -> ExpanderState) -> Expand ()
 modifyState f = do
-  st <- view expanderState <$> expanderContext
-  liftIO (modifyIORef st f)
+  !st <- view expanderState <$> expanderContext
+  liftIO (modifyIORef' st f)
 
 freshScope :: Text -> Expand Scope
 freshScope why = do
   n <- view expanderNextScopeNum <$> getState
-  modifyState $ over expanderNextScopeNum $ (+ 1)
+  modifyState $ over expanderNextScopeNum (+ 1)
   return (Scope n why)
 
 freshBinding :: Expand Binding
@@ -390,9 +392,7 @@ inEarlierPhase act =
   Expand $ local (over (expanderLocal . expanderPhase) prior) $ runExpand act
 
 moduleScope :: ModuleName -> Expand Scope
-moduleScope mn = do
-  sc <- moduleScope' mn
-  return sc
+moduleScope mn = moduleScope' mn
 
 moduleScope' :: ModuleName -> Expand Scope
 moduleScope' mn = do
@@ -584,7 +584,7 @@ getDeclGroup ptr =
     Just (DeclTreeAtom decl) ->
       (:[]) <$> getDecl decl
     Just (DeclTreeBranch l r) ->
-      (++) <$> getDeclGroup l <*> getDeclGroup r
+      (nub .) . (++) <$> getDeclGroup l <*> getDeclGroup r
 
 getDecl :: DeclPtr -> Expand CompleteDecl
 getDecl ptr =
