@@ -260,15 +260,15 @@ data ExpanderLocal = ExpanderLocal
 mkInitContext :: ModuleName -> FilePath -> IO ExpanderContext
 mkInitContext mn here = do
   kPath <- getKlisterPath
-  st <- newIORef $! initExpanderState here
-  return $ ExpanderContext { _expanderState = st
-                           , _expanderLocal = ExpanderLocal
-                             { _expanderModuleName  = mn
-                             , _expanderPhase       = runtime
-                             , _expanderBindingLevels = mempty
-                             , _expanderVarTypes    = mempty
-                             , _expanderKlisterPath = kPath
-                             , _expanderImportStack = []
+  !st <- newIORef $! initExpanderState here
+  return $! ExpanderContext { _expanderState = st
+                            , _expanderLocal = ExpanderLocal
+                              { _expanderModuleName  = mn
+                              , _expanderPhase       = runtime
+                              , _expanderBindingLevels = mempty
+                              , _expanderVarTypes    = mempty
+                              , _expanderKlisterPath = kPath
+                              , _expanderImportStack = []
                              }
                            }
 
@@ -584,7 +584,7 @@ getDeclGroup ptr =
     Just (DeclTreeAtom decl) ->
       (:[]) <$> getDecl decl
     Just (DeclTreeBranch l r) ->
-      (nub .) . (++) <$> getDeclGroup l <*> getDeclGroup r
+      (++) <$> getDeclGroup l <*> getDeclGroup r
 
 getDecl :: DeclPtr -> Expand CompleteDecl
 getDecl ptr =
@@ -866,9 +866,9 @@ currentTransformerEnv = do
 currentEnv :: Expand VEnv
 currentEnv = do
   phase <- currentPhase
-  globalEnv <-  maybe Env.empty id . view (expanderWorld . worldEnvironments . at phase) <$> getState
-  localEnv <- maybe Env.empty id . view (expanderCurrentEnvs . at phase) <$> getState
-  return (globalEnv <> localEnv)
+  globalEnv <- fromMaybe mempty . view (expanderWorld . worldEnvironments . at phase) <$> getState
+  localEnv  <- fromMaybe mempty . view (expanderCurrentEnvs . at phase) <$> getState
+  return $! globalEnv <> localEnv
 
 scheduleType :: Kind -> Syntax -> Expand SplitTypePtr
 scheduleType kind stx = do
