@@ -3,7 +3,7 @@
 {-# LANGUAGE TemplateHaskell    #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
-module Phase (Phase(..), phaseNum, runtime, prior, Phased(..)) where
+module Phase (Phase(..), runtime, prior, Phased(..)) where
 
 import Control.Lens
 import Data.Data (Data)
