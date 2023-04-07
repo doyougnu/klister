@@ -166,6 +166,7 @@ newtype CompleteDecl = CompleteDecl { _completeDecl :: Decl Ty (Scheme Ty) [Comp
   deriving (Data, Show, Eq)
 
 instance Phased CompleteDecl where
+  {-# INLINE shift #-}
   shift i (CompleteDecl d) = CompleteDecl (shift i d)
 
 data CompleteModule
@@ -174,6 +175,7 @@ data CompleteModule
   deriving (Data, Show)
 
 instance Phased CompleteModule where
+  {-# INLINE shift #-}
   shift i (Expanded m bs) = Expanded (shift i m) (shift i bs)
   shift i (KernelModule p) = KernelModule (shift i p)
 

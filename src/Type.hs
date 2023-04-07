@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveFoldable #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DeriveTraversable #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FunctionalDependencies #-}
@@ -23,8 +24,11 @@ import Kind
 import ShortShow
 import Unique
 
+import Util.Key
+
 newtype MetaPtr = MetaPtr Unique
-  deriving (Data, Eq, Ord)
+  deriving newtype (Eq, Ord, HasKey)
+  deriving stock   Data
 
 newMetaPtr :: IO MetaPtr
 newMetaPtr = MetaPtr <$> newUnique
