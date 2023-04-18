@@ -12,6 +12,8 @@ import Control.Lens hiding (List)
 import Control.Monad.State
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Set as Set
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import Data.Text.Prettyprint.Doc hiding (Pretty(..), angles, parens)
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -285,6 +287,17 @@ instance Pretty VarInfo core => Pretty VarInfo (ScopedString core) where
 
 instance PrettyBinder VarInfo CompleteDecl where
   ppBind env (CompleteDecl d) = ppBind env d
+
+instance PrettyBinder VarInfo (Seq CompleteDecl) where
+  ppBind env decls = over _1 vsep
+                   $ foldr go (\e -> (mempty, e)) decls mempty
+    where
+      go :: CompleteDecl
+         -> (Env Var () -> ([Doc VarInfo], Env Var ()))
+         -> (Env Var () -> ([Doc VarInfo], Env Var ()))
+      go decl cc e = let (doc, e') = ppBind (env <> e) decl
+                         (docs, e'') = cc (e <> e')
+                     in (doc:docs, e'')
 
 instance PrettyBinder VarInfo [CompleteDecl] where
   ppBind env decls = over _1 vsep

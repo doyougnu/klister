@@ -47,6 +47,7 @@ import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Data.Set (Set)
 import qualified Data.Set as Set
+import Data.Sequence (Seq)
 import Data.Text (Text)
 import Numeric.Natural
 
@@ -162,7 +163,7 @@ data Module f a = Module
 makeLenses ''Module
 
 
-newtype CompleteDecl = CompleteDecl { _completeDecl :: Decl Ty (Scheme Ty) [CompleteDecl] Core }
+newtype CompleteDecl = CompleteDecl { _completeDecl :: Decl Ty (Scheme Ty) (Seq CompleteDecl) Core }
   deriving (Data, Show, Eq)
 
 instance Phased CompleteDecl where
@@ -170,7 +171,7 @@ instance Phased CompleteDecl where
   shift i (CompleteDecl d) = CompleteDecl (shift i d)
 
 data CompleteModule
-  = Expanded !(Module [] CompleteDecl) !BindingTable
+  = Expanded !(Module Seq CompleteDecl) !BindingTable
   | KernelModule !Phase
   deriving (Data, Show)
 

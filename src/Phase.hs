@@ -7,6 +7,7 @@ module Phase (Phase(..), runtime, prior, Phased(..)) where
 
 import Control.Lens
 import Data.Data (Data)
+import Data.Sequence (Seq)
 import Numeric.Natural
 
 import ShortShow
@@ -40,4 +41,7 @@ instance Phased Phase where
   shift j (Phase i) = Phase (i + j)
 
 instance Phased a => Phased [a] where
+  shift i = fmap (shift i)
+
+instance Phased a => Phased (Seq a) where
   shift i = fmap (shift i)

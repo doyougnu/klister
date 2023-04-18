@@ -157,6 +157,8 @@ import Data.Foldable
 import Data.IORef
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import Data.Maybe
 import Data.Monoid
 import Data.Text (Text)
@@ -574,16 +576,16 @@ dependencies slot =
     Nothing -> pure [slot]
     Just c -> foldMap id <$> traverse dependencies c
 
-getDeclGroup :: DeclTreePtr -> Expand [CompleteDecl]
+getDeclGroup :: DeclTreePtr -> Expand (Seq CompleteDecl)
 getDeclGroup ptr =
   (view (expanderCompletedDeclTrees . at ptr) <$> getState) >>=
   \case
     Nothing -> throwError $ InternalError "Incomplete module after expansion"
-    Just DeclTreeLeaf -> pure []
+    Just DeclTreeLeaf -> pure mempty
     Just (DeclTreeAtom decl) ->
-      (:[]) <$> getDecl decl
+      pure <$> getDecl decl
     Just (DeclTreeBranch l r) ->
-      (++) <$> getDeclGroup l <*> getDeclGroup r
+      (<>) <$> getDeclGroup l <*> getDeclGroup r
 
 getDecl :: DeclPtr -> Expand CompleteDecl
 getDecl ptr =
