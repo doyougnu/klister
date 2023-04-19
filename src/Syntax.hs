@@ -25,10 +25,12 @@ import Alpha
 import ModuleName
 import Phase
 import Scope
-import ScopeSet (ScopeSet)
 import ShortShow
-import qualified ScopeSet
+import ScopeSet
 import Syntax.SrcLoc
+
+import qualified Util.Set   as Set
+import qualified Util.Store as St
 
 data Stx a = Stx
   { _stxScopeSet :: ScopeSet
@@ -113,25 +115,12 @@ addScope' = adjustScope ScopeSet.insertUniversally
 removeScope' :: HasScopes a => Scope -> a -> a
 removeScope' = adjustScope ScopeSet.deleteUniversally
 
-
-addScopes :: forall a. HasScopes a => ScopeSet -> a -> a
-addScopes scopeSet
-  = addSpecificScopes
-  . addUniversalScopes
+addScopes :: HasScopes p => ScopeSet -> p -> p
+addScopes scopeSet =  mapScopes (over phaseScopes newSpecificScopes
+                                 . over universalScopes newUniversalScopes)
   where
-    addUniversalScopes :: HasScopes a => a -> a
-    addUniversalScopes a0 =
-      foldlOf (to ScopeSet.contents . _1 . folded)
-              (flip addScope')
-              a0
-              scopeSet
-
-    addSpecificScopes :: HasScopes a => a -> a
-    addSpecificScopes a0 =
-      ifoldlOf (to ScopeSet.contents .> _2 .> ifolded <. folded)
-               (\p a sc -> addScope p sc a)
-               a0
-               scopeSet
+    newUniversalScopes = Set.union (view _1 (contents scopeSet))
+    newSpecificScopes  = St.unionWith (<>) (view _2 (contents scopeSet))
 
 stxLoc :: Syntax -> SrcLoc
 stxLoc (Syntax (Stx _ srcloc _)) = srcloc

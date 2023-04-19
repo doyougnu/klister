@@ -11,9 +11,8 @@ module Pretty (Doc, Pretty(..), string, text, viaShow, (<+>), (<>), align, hang,
 import Control.Lens hiding (List)
 import Control.Monad.State
 import qualified Data.HashMap.Strict as HM
-import qualified Data.Set as Set
+import qualified Util.Set as Set
 import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
 import Data.Text.Prettyprint.Doc hiding (Pretty(..), angles, parens)
 import Data.Text (Text)
 import qualified Data.Text as T

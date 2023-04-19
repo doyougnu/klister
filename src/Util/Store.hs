@@ -22,7 +22,10 @@ module Util.Store
   , Store
   , unionWith
   , mapKeys
+  , mapWithKey
   , mapMaybeWithKey
+  , foldlWithKey
+  , foldrWithKey
   )
 where
 
@@ -92,5 +95,16 @@ unionWith f l r = Store $! IM.unionWith f (unStore l) (unStore r)
 mapMaybeWithKey :: HasKey p => (p -> a -> Maybe b) -> Store p a -> Store p b
 mapMaybeWithKey f s = Store $! IM.mapMaybeWithKey (f . fromKey) (unStore s)
 
+mapWithKey :: HasKey p => (p -> a -> b) -> Store p a -> Store p b
+mapWithKey f s = Store $! IM.mapWithKey (f . fromKey) (unStore s)
+
 mapKeys :: HasKey p => (p -> p) -> Store p v -> Store p v
 mapKeys f s = Store $! IM.mapKeys (getKey . f . fromKey) (unStore s)
+
+foldlWithKey :: HasKey p => (a -> p -> b -> a) -> a -> Store p b -> a
+foldlWithKey f acc st = IM.foldlWithKey go acc (unStore st)
+  where go a p = f a (fromKey p)
+
+foldrWithKey :: HasKey p => (p -> a -> b -> b) -> b -> Store p a -> b
+foldrWithKey f acc st = IM.foldrWithKey go acc (unStore st)
+  where go k = f (fromKey k)

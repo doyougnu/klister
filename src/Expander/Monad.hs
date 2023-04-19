@@ -197,6 +197,7 @@ import World
 
 import Util.Store (Store)
 import qualified Util.Store as S
+import Util.Key
 
 newtype Expand a = Expand
   { runExpand :: ReaderT ExpanderContext (ExceptT ExpansionErr IO) a
@@ -208,7 +209,7 @@ execExpand ctx act = runExceptT $ runReaderT (runExpand act) ctx
 
 
 newtype TaskID = TaskID Unique
-  deriving newtype (Eq, Ord)
+  deriving newtype (Eq, Ord, HasKey)
 
 instance Show TaskID where
   show (TaskID u) = "(TaskID " ++ show (hashUnique u) ++ ")"
@@ -308,6 +309,10 @@ data ExpanderState = ExpanderState
   , _expanderTypeStore          :: !(TypeStore Ty)
   , _expanderKindStore          :: !KindStore
   , _expanderDefTypes           :: !(TypeContext Var SchemePtr) -- ^ Module-level definitions
+  , _expanderScopePurpose       :: Store Scope Text
+  -- expanderScopePurpose is specifically kept lazy, this is only used for error
+  -- messages.
+  -- FIXME: add conditional flag to remove in non-debug build
   }
 
 initExpanderState :: FilePath -> ExpanderState
@@ -347,6 +352,7 @@ initExpanderState here = ExpanderState
   , _expanderTypeStore           = mempty
   , _expanderKindStore           = mempty
   , _expanderDefTypes            = mempty
+  , _expanderScopePurpose        = mempty
   }
 
 makeLenses ''ExpanderContext
@@ -368,8 +374,10 @@ modifyState f = do
 freshScope :: Text -> Expand Scope
 freshScope why = do
   n <- view expanderNextScopeNum <$> getState
+  let !new = Scope n
   modifyState $ over expanderNextScopeNum (+ 1)
-  return (Scope n why)
+  modifyState $ over expanderScopePurpose (S.insert new why)
+  return new
 
 freshBinding :: Expand Binding
 freshBinding = Binding <$> liftIO newUnique

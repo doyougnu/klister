@@ -48,7 +48,6 @@ import Data.List (nub)
 import Data.List.Extra (maximumOn)
 import qualified Data.HashMap.Strict as HM
 import Data.Maybe
-import qualified Data.Set as Set
 import Data.Sequence (Seq)
 import qualified Data.Sequence as Seq
 import Data.Text (Text)
@@ -86,6 +85,7 @@ import World
 import qualified ScopeSet
 
 import qualified Util.Store as S
+import qualified Util.Set as Set
 
 expandExpr :: Syntax -> Expand SplitCore
 expandExpr stx = do

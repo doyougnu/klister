@@ -84,6 +84,7 @@ library
       Unique
       Util.Key
       Util.Store
+      Util.Set
       Value
       World
   other-modules:

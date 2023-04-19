@@ -1,14 +1,17 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Scope where
 
 import Data.Data (Data)
 import Control.Lens
 
-import Data.Text (Text)
+import Util.Key
 
 -- Int should be enough for now - consider bumping to something like int64
-data Scope = Scope { scopeNum :: !Int, scopePurpose :: Text }
-  deriving (Data, Eq, Ord, Show)
+newtype Scope = Scope { scopeNum :: Int }
+  deriving newtype (Eq, Ord, Show, HasKey)
+  deriving stock Data
 makeLenses ''Scope
 

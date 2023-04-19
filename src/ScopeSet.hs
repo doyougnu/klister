@@ -7,6 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE BangPatterns #-}
 module ScopeSet (
   -- * Scope Sets and their construction
     ScopeSet
@@ -18,6 +19,8 @@ module ScopeSet (
   , member
   , isSubsetOf
   , contents
+  , universalScopes
+  , phaseScopes
   -- * Updates
   , insertAtPhase
   , insertUniversally
@@ -31,8 +34,6 @@ import Control.Lens
 import Control.Monad
 import Data.Data (Data, gfoldl)
 import Data.Typeable
-import Data.Set (Set)
-import qualified Data.Set as Set
 
 import Alpha
 import Phase
@@ -41,6 +42,8 @@ import ShortShow
 
 import Util.Store (Store)
 import qualified Util.Store as St
+import Util.Set (Set)
+import qualified Util.Set as Set
 import Util.Key()
 
 data ScopeSet = ScopeSet
@@ -143,4 +146,6 @@ allScopeSets = allScopeSets'
     gmapA g = gfoldl combine pure
       where
         combine :: Data a => f (a -> b) -> a -> f b
-        combine ff a = (<*>) ff (g a)
+        combine ff a = let !ga = g a
+                           !res = (<*>) ff ga
+                           in res

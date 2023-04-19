@@ -6,7 +6,6 @@ module World where
 import Control.Lens
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
-import Data.Set (Set)
 import Data.Maybe (fromMaybe)
 
 import Core (MacroVar, Var)
@@ -21,6 +20,7 @@ import Type
 import Type.Context
 
 import Util.Store
+import Util.Set (Set)
 
 data World a = World
   { _worldEnvironments :: !(Store Phase (Env Var a))
