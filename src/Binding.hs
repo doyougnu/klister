@@ -12,6 +12,7 @@ import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import ScopeSet
 import Data.Text (Text)
+import Data.Sequence (Seq)
 
 import Binding.Info
 import Phase
@@ -37,7 +38,7 @@ instance Show Binding where
 instance ShortShow Binding where
   shortShow (Binding b) = "b" ++ show (hashUnique b)
 
-newtype BindingTable = BindingTable { _bindings :: HashMap Text [(ScopeSet, Binding, BindingInfo SrcLoc)] }
+newtype BindingTable = BindingTable { _bindings :: HashMap Text (Seq (ScopeSet, Binding, BindingInfo SrcLoc)) }
   deriving (Data, Show)
 makeLenses ''BindingTable
 
@@ -48,10 +49,10 @@ instance Monoid BindingTable where
   mempty = BindingTable HM.empty
 
 instance Phased BindingTable where
-  shift i = over bindings (HM.map (map (over _1 (shift i))))
+  shift i = over bindings (HM.map (fmap (over _1 (shift i))))
 
 type instance Index BindingTable = Text
-type instance IxValue BindingTable = [(ScopeSet, Binding, BindingInfo SrcLoc)]
+type instance IxValue BindingTable = Seq (ScopeSet, Binding, BindingInfo SrcLoc)
 
 instance Ixed BindingTable where
   ix x f (BindingTable bs) = BindingTable <$> ix x f bs

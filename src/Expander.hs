@@ -49,6 +49,8 @@ import Data.List.Extra (maximumOn)
 import qualified Data.HashMap.Strict as HM
 import Data.Maybe
 import qualified Data.Set as Set
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
@@ -342,25 +344,23 @@ visibleBindings = do
 
 
 
-allMatchingBindings :: Text -> ScopeSet -> Expand [(ScopeSet, Binding)]
+allMatchingBindings :: Text -> ScopeSet -> Expand (Seq (ScopeSet, Binding))
 allMatchingBindings x scs = do
-  namesMatch <- view (at x . non []) <$> visibleBindings
+  namesMatch <- view (at x . non mempty) <$> visibleBindings
   p <- currentPhase
-  let scopesMatch =
-        [ (scopes, b)
-        | (scopes, b, _) <- namesMatch
-        , ScopeSet.isSubsetOf p scopes scs
-        ]
+  let scopesMatch = fmap (\(s,b,_) -> (s,b))
+        . Seq.filter (\(scopes, _, _) -> ScopeSet.isSubsetOf p scopes scs)
+        $ namesMatch
   return scopesMatch
 
 
 
-checkUnambiguous :: ScopeSet -> [ScopeSet] -> Ident -> Expand ()
+checkUnambiguous :: ScopeSet -> (Seq ScopeSet) -> Ident -> Expand ()
 checkUnambiguous best candidates blame =
   do p <- currentPhase
      let bestSize = ScopeSet.size p best
-     let candidateSizes = map (ScopeSet.size p) (nub candidates)
-     if length (filter (== bestSize) candidateSizes) > 1
+     let candidateSizes = Seq.fromList $ fmap (ScopeSet.size p) (nub $ toList candidates)
+     if Seq.length (Seq.filter (== bestSize) candidateSizes) > 1
        then throwError (Ambiguous p blame candidates)
        else return ()
 
@@ -369,12 +369,16 @@ resolve stx@(Stx scs srcLoc x) = do
   p <- currentPhase
   bs <- allMatchingBindings x scs
   case bs of
-    [] ->
+    Seq.Empty ->
       throwError (Unknown (Stx scs srcLoc x))
     candidates ->
-      let best = maximumOn (ScopeSet.size p . fst) candidates
-      in checkUnambiguous (fst best) (map fst candidates) stx *>
-         return (snd best)
+      let
+        check = ScopeSet.size p . fst
+        c_last :: Seq a -> a
+        c_last (_xs Seq.:|> lst) = lst
+        (best_scpset, best_bind) = c_last $ Seq.sortOn check candidates
+      in checkUnambiguous best_scpset (fmap fst candidates) stx *>
+         return best_bind
 
 
 initializeKernel :: Handle -> Expand ()

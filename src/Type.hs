@@ -15,7 +15,6 @@ import Control.Lens
 import Control.Monad
 import Data.Foldable
 import Data.Data (Data)
-import Data.Map (Map)
 import Numeric.Natural
 
 import Alpha
@@ -25,6 +24,7 @@ import ShortShow
 import Unique
 
 import Util.Key
+import Util.Store
 
 newtype MetaPtr = MetaPtr Unique
   deriving newtype (Eq, Ord, HasKey)
@@ -74,7 +74,7 @@ data TVar t = TVar
   deriving (Functor, Show)
 makeLenses ''TVar
 
-newtype TypeStore t = TypeStore (Map MetaPtr (TVar t))
+newtype TypeStore t = TypeStore (Store MetaPtr (TVar t))
   deriving (Functor, Monoid, Semigroup, Show)
 
 type instance Index (TypeStore t) = MetaPtr

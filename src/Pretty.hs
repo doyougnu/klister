@@ -17,6 +17,7 @@ import qualified Data.Sequence as Seq
 import Data.Text.Prettyprint.Doc hiding (Pretty(..), angles, parens)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Foldable as F
 import qualified Data.Text.Prettyprint.Doc as PP
 import Data.Text.Prettyprint.Doc.Render.Text (putDoc, renderStrict)
 import System.FilePath (takeFileName)
@@ -659,7 +660,7 @@ instance Pretty VarInfo BindingTable where
                       text "{" <> group (vsep [ pp env scs <+> text "↦" <+>
                                                 pp env b <+> text "@" <+>
                                                 pp env info
-                                              | (scs, b, info) <- xs]) <> text "}"
+                                              | (scs, b, info) <- F.toList xs]) <> text "}"
                     | (n, xs) <- HM.toList $ view bindings bs
                     ]
 

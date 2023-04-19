@@ -157,8 +157,7 @@ import Data.Foldable
 import Data.IORef
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
-import Data.Sequence (Seq)
-import qualified Data.Sequence as Seq
+import Data.Sequence (Seq(..))
 import Data.Maybe
 import Data.Monoid
 import Data.Text (Text)
@@ -780,7 +779,7 @@ bind b v =
 addBinding :: Ident -> Binding -> BindingInfo SrcLoc -> Expand ()
 addBinding (Stx scs _ name) b info = do
   modifyState $ over (expanderCurrentBindingTable . at name) $
-    (Just . ((scs, b, info) :) . fromMaybe [])
+    (Just . ((scs, b, info) :<|) . fromMaybe mempty)
 
 addImportBinding :: Ident -> Binding -> Expand ()
 addImportBinding x@(Stx _ loc _) b =
