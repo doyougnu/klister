@@ -6,6 +6,7 @@ module World where
 import Control.Lens
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
+import Data.Sequence as Seq
 import Data.Set (Set)
 import Data.Maybe (fromMaybe)
 
@@ -29,7 +30,7 @@ data World a = World
   , _worldModules      :: !(HashMap ModuleName CompleteModule)
   , _worldVisited      :: !(HashMap ModuleName (Set Phase))
   , _worldExports      :: !(HashMap ModuleName Exports)
-  , _worldEvaluated    :: !(HashMap ModuleName [EvalResult])
+  , _worldEvaluated    :: !(HashMap ModuleName (Seq EvalResult))
   , _worldDatatypes    :: !(Store Phase (HashMap Datatype DatatypeInfo))
   , _worldConstructors :: !(Store Phase (HashMap Constructor (ConstructorInfo Ty)))
   , _worldLocation     :: FilePath

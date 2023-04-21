@@ -531,7 +531,7 @@ testFile f p = do
             case HM.lookup mn (view worldEvaluated w) of
               Nothing -> assertFailure "Module values not in its own expansion"
               Just evalResults ->
-                p m [val | ExampleResult _ _ _ _ val <- evalResults]
+                p m [val | ExampleResult _ _ _ _ val <- toList evalResults]
 
 testFileError :: FilePath -> (ExpansionErr -> Bool) -> Assertion
 testFileError f p = do

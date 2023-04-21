@@ -244,7 +244,7 @@ visit modName = do
 
 -- | Evaluate an expanded module at the current expansion phase,
 -- recursively loading its run-time dependencies.
-evalMod :: CompleteModule -> Expand [EvalResult]
+evalMod :: CompleteModule -> Expand (Seq EvalResult)
 evalMod (KernelModule _) = do
   p <- currentPhase
   dts <- view expanderKernelDatatypes <$> getState
@@ -263,11 +263,11 @@ evalMod (KernelModule _) = do
       Just env -> Just (env <> (snd <$> vals))
   modifyState $
     over (expanderWorld . worldTypeContexts . at p . non mempty) (<> (fst <$> vals))
-  return []
+  return mempty
 evalMod (Expanded em _) = execWriterT $ do
     traverseOf_ (moduleBody . each) evalDecl em
   where
-    evalDecl :: CompleteDecl -> WriterT [EvalResult] Expand ()
+    evalDecl :: CompleteDecl -> WriterT (Seq EvalResult) Expand ()
     evalDecl (CompleteDecl d) =
       case d of
         Define x n sch e -> do
@@ -301,12 +301,12 @@ evalMod (Expanded em _) = execWriterT $ do
         Example loc sch expr -> do
           env <- lift currentEnv
           value <- lift $ expandEval (eval expr)
-          tell $ [ExampleResult loc env expr sch value]
+          tell . pure $ ExampleResult loc env expr sch value
         Run loc expr -> do
           lift (expandEval (eval expr)) >>=
             \case
               (ValueIOAction act) ->
-                tell $ [IOResult $ void $ act]
+                tell . pure . IOResult . void $ act
               _ -> throwError $ InternalError $
                    "While running an action at " ++
                    T.unpack (pretty loc) ++
