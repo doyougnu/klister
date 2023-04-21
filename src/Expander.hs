@@ -42,14 +42,13 @@ import Control.Applicative
 import Control.Lens hiding (List, children)
 import Control.Monad.Except
 import Control.Monad.Reader
-import Control.Monad.Writer
+import Control.Monad.State.Strict
 import Data.Foldable
 import Data.List (nub)
-import Data.List.Extra (maximumOn)
 import qualified Data.HashMap.Strict as HM
 import Data.Maybe
 import qualified Data.Set as Set
-import Data.Sequence (Seq)
+import Data.Sequence (Seq(..))
 import qualified Data.Sequence as Seq
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -264,10 +263,9 @@ evalMod (KernelModule _) = do
   modifyState $
     over (expanderWorld . worldTypeContexts . at p . non mempty) (<> (fst <$> vals))
   return mempty
-evalMod (Expanded em _) = execWriterT $ do
-    traverseOf_ (moduleBody . each) evalDecl em
+evalMod (Expanded em _) = execStateT (traverseOf_ (moduleBody . each) evalDecl em) mempty
   where
-    evalDecl :: CompleteDecl -> WriterT (Seq EvalResult) Expand ()
+    evalDecl :: CompleteDecl -> StateT (Seq EvalResult) Expand ()
     evalDecl (CompleteDecl d) =
       case d of
         Define x n sch e -> do
@@ -301,12 +299,12 @@ evalMod (Expanded em _) = execWriterT $ do
         Example loc sch expr -> do
           env <- lift currentEnv
           value <- lift $ expandEval (eval expr)
-          tell . pure $ ExampleResult loc env expr sch value
+          modify' (:|> ExampleResult loc env expr sch value)
         Run loc expr -> do
           lift (expandEval (eval expr)) >>=
             \case
               (ValueIOAction act) ->
-                tell . pure . IOResult . void $ act
+                modify' (:|> (IOResult . void $ act))
               _ -> throwError $ InternalError $
                    "While running an action at " ++
                    T.unpack (pretty loc) ++
@@ -319,8 +317,8 @@ evalMod (Expanded em _) = execWriterT $ do
               over (expanderWorld . worldTransformerEnvironments . at p) $
               Just . maybe (Env.singleton n x v) (Env.insert n x v)
         Meta decls -> do
-          ((), out) <- lift $ inEarlierPhase (runWriterT $ traverse_ evalDecl decls)
-          tell out
+          ((), out) <- lift $ inEarlierPhase (runStateT (traverse_ evalDecl decls) mempty)
+          modify' (<> out)
         Import spec -> lift $ getImports spec >> pure () -- for side effect of evaluating module
         Export _ -> pure ()
 
