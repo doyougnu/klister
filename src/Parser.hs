@@ -8,6 +8,7 @@ import Data.Functor
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import qualified Data.Sequence as Seq
 
 import Text.Megaparsec
 import Text.Megaparsec.Char (char)
@@ -35,7 +36,7 @@ readModule filename =
   where
     source = (,) <$> hashLang <*> manyStx expr <* eof
     addModule (Syntax (Stx scs loc (List decls)))
-      = Syntax (Stx scs loc (List (module_ : decls)))
+      = Syntax (Stx scs loc (List (module_ Seq.:<| decls)))
       where
         module_ = Syntax (Stx scs loc (Id "#%module"))
     addModule _
@@ -67,12 +68,12 @@ list = parenned "(" ")" <|> parenned "[" "]"
       do Located loc1 _ <- located (literal open)
          xs <- many expr
          Located loc2 _ <- located (literal close)
-         return $ Syntax $ Stx ScopeSet.empty (spanLocs loc1 loc2) (List xs)
+         return $ Syntax $ Stx ScopeSet.empty (spanLocs loc1 loc2) (List $! Seq.fromList xs)
 
 manyStx :: Parser Syntax -> Parser Syntax
 manyStx p =
   do Located loc xs <- located (many p)
-     return $ Syntax $ Stx ScopeSet.empty loc (List xs)
+     return $ Syntax $ Stx ScopeSet.empty loc (List $! Seq.fromList xs)
 
 
 string :: Parser Syntax
@@ -94,36 +95,32 @@ quoted =
   do Located loc1 _ <- lexeme (literal "'")
      e@(Syntax (Stx _ loc2 _)) <- expr
      return $ Syntax $ Stx ScopeSet.empty (spanLocs loc1 loc2) $
-       List [ Syntax (Stx ScopeSet.empty loc1 (Id "quote"))
-            , e
-            ]
+       List $ Syntax (Stx ScopeSet.empty loc1 (Id "quote"))
+            Seq.:<| pure e
 
 quasiquoted :: Parser Syntax
 quasiquoted =
   do Located loc1 _ <- lexeme (literal "`")
      e@(Syntax (Stx _ loc2 _)) <- expr
      return $ Syntax $ Stx ScopeSet.empty (spanLocs loc1 loc2) $
-       List [ Syntax (Stx ScopeSet.empty loc1 (Id "quasiquote"))
-            , e
-            ]
+       List $ Syntax (Stx ScopeSet.empty loc1 (Id "quasiquote"))
+            Seq.:<| pure e
 
 unquoted :: Parser Syntax
 unquoted =
   do Located loc1 _ <- lexeme (literal ",")
      e@(Syntax (Stx _ loc2 _)) <- expr
      return $ Syntax $ Stx ScopeSet.empty (spanLocs loc1 loc2) $
-       List [ Syntax (Stx ScopeSet.empty loc1 (Id "unquote"))
-            , e
-            ]
+       List $ Syntax (Stx ScopeSet.empty loc1 (Id "unquote"))
+            Seq.:<| pure e
 
 unquote_spliced :: Parser Syntax
 unquote_spliced =
   do Located loc1 _ <- lexeme (literal ",@")
      e@(Syntax (Stx _ loc2 _)) <- expr
      return $ Syntax $ Stx ScopeSet.empty (spanLocs loc1 loc2) $
-       List [ Syntax (Stx ScopeSet.empty loc1 (Id "unquote-splicing"))
-            , e
-            ]
+       List $ Syntax (Stx ScopeSet.empty loc1 (Id "unquote-splicing"))
+              Seq.:<| pure e
 
 -- | Mostly like the identifier rules from R6RS Scheme, minus hex escapes
 identName :: Parser Text

@@ -9,6 +9,7 @@ import Control.Lens
 import Data.Data (Data)
 import Data.String
 import Data.Text (Text)
+import Data.Sequence (Seq)
 import Data.Hashable
 
 import Alpha
@@ -56,15 +57,15 @@ instance AlphaEq Constructor where
 
 data DatatypeInfo
   = DatatypeInfo
-    { _datatypeArgKinds :: [Kind]
-    , _datatypeConstructors :: ![Constructor]
+    { _datatypeArgKinds :: Seq Kind
+    , _datatypeConstructors :: !(Seq Constructor)
     }
   deriving Eq
 makeLenses ''DatatypeInfo
 
 data ConstructorInfo t
   = ConstructorInfo
-    { _ctorArguments :: ![t] -- ^ Either a type parameter or a concrete type
+    { _ctorArguments :: !(Seq t) -- ^ Either a type parameter or a concrete type
     , _ctorDatatype :: !Datatype
     }
   deriving Eq

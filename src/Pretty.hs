@@ -120,9 +120,9 @@ instance (PrettyBinder VarInfo typePat, PrettyBinder VarInfo pat, Pretty VarInfo
     pp (env <> Env.singleton v n ()) body
   pp env (CoreApp fun arg) =
     hang 2 $ parens (pp env fun <> line <> pp env arg)
-  pp env (CoreCtor ctor []) = pp env ctor
+  pp env (CoreCtor ctor Empty) = pp env ctor
   pp env (CoreCtor ctor args) =
-    hang 2 $ parens $ pp env ctor <+> group (vsep (map (pp env) args))
+    hang 2 $ parens $ pp env ctor <+> group (vsep (map (pp env) (F.toList args)))
   pp env (CoreDataCase _ scrut cases) =
     hang 2 $ group $
     vsep [ text "case" <+> pp env scrut <+> "of"
@@ -134,7 +134,7 @@ instance (PrettyBinder VarInfo typePat, PrettyBinder VarInfo pat, Pretty VarInfo
                    in hang 2 $ group $
                       vsep [ppPat <+> text "↦",
                             pp (env <> env') rhs])
-            cases
+            (F.toList cases)
          ]
   pp _env (CoreString str) = text (T.pack (show str))
   pp env (CoreError what) =
@@ -166,7 +166,7 @@ instance (PrettyBinder VarInfo typePat, PrettyBinder VarInfo pat, Pretty VarInfo
     vsep [ parens $ hang 2 $
            let (b, env') = ppBind env pat
            in group (group (b <+> "=>") <> line <> pp (env <> env') body)
-         | (pat, body) <- pats
+         | (pat, body) <- F.toList pats
          ]
   pp _env (CoreInteger s) = viaShow s
   pp env (CoreIdent x) = pp env x
@@ -186,7 +186,7 @@ instance (PrettyBinder VarInfo typePat, PrettyBinder VarInfo pat, Pretty VarInfo
     vsep [ parens $ hang 2 $
            let (b, env') = ppBind env pat
            in group (group (b <+> "=>") <> line <> pp (env <> env') body)
-         | (pat, body) <- pats
+         | (pat, body) <- F.toList pats
          ]
 
 instance Pretty VarInfo core => Pretty VarInfo (SyntaxError core) where
@@ -222,9 +222,9 @@ instance PrettyBinder VarInfo ConstructorPattern where
 instance PrettyBinder VarInfo a => PrettyBinder VarInfo (ConstructorPatternF a) where
   ppBind env (CtorPattern ctor subPats) =
     case subPats of
-      [] -> (pp env ctor, Env.empty)
+      Empty -> (pp env ctor, Env.empty)
       _nonEmpty ->
-        let subDocs = map (ppBind env) subPats
+        let subDocs = map (ppBind env) (F.toList subPats)
             env' = foldr (<>) Env.empty (map snd subDocs)
         in (pp env ctor <+> hsep (map fst subDocs),
             env')
@@ -248,9 +248,9 @@ instance PrettyBinder VarInfo SyntaxPattern where
   ppBind _env (SyntaxPatternList vars) =
     (vec $
      hsep [annotate (BindingSite v) (text x)
-          | (Stx _ _ x, v) <- vars
+          | (Stx _ _ x, v) <- F.toList vars
           ],
-     foldr (\(x, v) e -> Env.insert x v () e) Env.empty [(v, x) | (x, v) <- vars])
+     foldr (\(x, v) e -> Env.insert x v () e) Env.empty [(v, x) | (x, v) <- F.toList vars])
   ppBind _env SyntaxPatternAny = (text "_", Env.empty)
 
 instance Pretty VarInfo core => Pretty VarInfo (ScopedIdent core) where
@@ -272,7 +272,7 @@ instance Pretty VarInfo core => Pretty VarInfo (ScopedCons core) where
 
 instance Pretty VarInfo core => Pretty VarInfo (ScopedList core) where
   pp env xs =
-    vec (hsep $ map (pp env) (view scopedListElements xs)) <>
+    vec (hsep $ F.toList $ fmap (pp env) (view scopedListElements xs)) <>
     angles (pp env (view scopedListScope xs))
 
 instance Pretty VarInfo core => Pretty VarInfo (ScopedInteger core) where
@@ -318,13 +318,13 @@ instance Pretty VarInfo Kind where
   pp _   (KMetaVar v) = text "META" <> viaShow v -- TODO make it look better
 
 instance Pretty VarInfo (Scheme Ty) where
-  pp env (Scheme [] t) =
+  pp env (Scheme Empty t) =
     pp env t
   pp env (Scheme argKinds t) =
     text "∀" <>
     (align $ group $
      vsep [ group $
-            vsep (zipWith ppArgKind typeVarNames argKinds) <> text "."
+            vsep (zipWith ppArgKind typeVarNames (F.toList argKinds)) <> text "."
           , pp env t
           ])
     where
@@ -360,16 +360,16 @@ instance Pretty VarInfo TypeConstructor where
   pp _   (TMetaVar v)   = text "META" <> viaShow v -- TODO
 
 instance Pretty VarInfo a => Pretty VarInfo (TyF a) where
-  pp _ (TyF TFun []) =
+  pp _ (TyF TFun Seq.Empty) =
     parens (text "→")
-  pp env (TyF TFun [a]) =
+  pp env (TyF TFun (a Seq.:<| Seq.Empty)) =
     parens (text "→" <+> pp env a)
-  pp env (TyF TFun [a, b]) =
+  pp env (TyF TFun (a Seq.:<| b Seq.:<| Seq.Empty)) =
     parens $ align $ group $ vsep [pp env a <+> text "→", pp env b]
   pp env (TyF ctor args) =
     case args of
-      [] -> pp env ctor
-      more -> parens (align $ group $ pp env ctor <+> vsep (map (pp env) more))
+      Seq.Empty -> pp env ctor
+      more -> parens (align $ group $ pp env ctor <+> vsep (map (pp env) (F.toList more)))
 
 instance Pretty VarInfo Datatype where
   pp _ d = text (view (datatypeName . datatypeNameText) d)
@@ -396,7 +396,7 @@ instance (Pretty VarInfo s, Pretty VarInfo t, PrettyBinder VarInfo a, Pretty Var
     (hang 4 $ text "define-macros" <> line <>
      vsep [hang 2 $ group $
            annotate (MacroBindingSite v) (text x) <+> text "↦" <> line <> pp env e -- TODO phase-specific binding environments in pprinter
-          | (Stx _ _ x, v, e) <- macros
+          | (Stx _ _ x, v, e) <- F.toList macros
           ],
      mempty)
   ppBind env (Data (Stx _ _ x) _dn argKinds ctors) =
@@ -404,17 +404,17 @@ instance (Pretty VarInfo s, Pretty VarInfo t, PrettyBinder VarInfo a, Pretty Var
      vsep ( text "data" <+> text x <+>
             hsep [ parens (text α <+> ":" <+> pp env k)
                  | α <- typeVarNames
-                 | k <- argKinds
+                 | k <- F.toList argKinds
                  ] <+>
             text "="
           : punc (space <> text "|")
             [ case args of
-                [] -> text c
+                Empty -> text c
                 more ->
                   hang 2 $
                   text c <+>
-                  group (vsep [ pp env a | a <- more ])
-            | (Stx _ _ c, _cn, args) <- ctors
+                  group (vsep [ pp env a | a <- F.toList more ])
+            | (Stx _ _ c, _cn, args) <- F.toList ctors
             ]
           )
     , mempty)
@@ -439,7 +439,7 @@ instance (Pretty VarInfo s, Pretty VarInfo t, PrettyBinder VarInfo a, Pretty Var
 
 instance Pretty VarInfo ExportSpec where
   pp env (ExportIdents ids) =
-    text "{" <> align (vsep [pp env x | (Stx _ _ x) <- ids]) <> text "}"
+    text "{" <> align (vsep [pp env x | (Stx _ _ x) <- F.toList ids]) <> text "}"
   pp env (ExportRenamed spec rens) =
     align $ hang 2 $ group $
       pp env spec <> line <>
@@ -465,12 +465,12 @@ instance Pretty VarInfo ImportSpec where
   pp env (ImportModule mn) = pp env mn
   pp env (ImportOnly spec ids) = group $ vsep [ text "only"
                                               , pp env spec
-                                              , parens (group (vsep (map (pp env) ids)))
+                                              , parens (group (vsep (map (pp env) (F.toList ids))))
                                               ]
   pp env (ShiftImports spec i) = pp env spec <+> "⇑" <+> viaShow i
   pp env (RenameImports spec rens) = group $ vsep [ text "rename"
                                                   , pp env spec
-                                                  , group (vsep [pp env x <+> pp env y | (x, y) <- rens])
+                                                  , group (vsep [pp env x <+> pp env y | (x, y) <- (F.toList rens)])
                                                   ]
   pp env (PrefixImports spec pref) = group $ vsep [ text "prefix"
                                                   , pp env spec
@@ -521,7 +521,7 @@ instance Pretty VarInfo (ExprF Syntax) where
   pp _   (Id x)      = text x
   pp _   (String s)  = viaShow s
   pp _   (Integer s) = viaShow s
-  pp env (List xs)   = parens (group (vsep (map (pp env . syntaxE) xs)))
+  pp env (List xs)   = parens (group (vsep (map (pp env . syntaxE) (F.toList xs))))
 
 instance Pretty VarInfo Closure where
   pp _ _ = text "#<closure>"
@@ -533,13 +533,13 @@ instance Pretty VarInfo Value where
   pp _env (ValueIOAction _) = "#<IO action>"
   pp _env (ValueOutputPort _) = "#<output port>"
   pp _env (ValueInteger s) = viaShow s
-  pp _env (ValueCtor c []) =
+  pp _env (ValueCtor c Empty) =
     parens $
     text (view (constructorName . constructorNameText) c)
   pp env (ValueCtor c args) =
     parens $
     text (view (constructorName . constructorNameText) c) <+>
-    align (group (vsep (map (pp env) args)))
+    align (group (vsep (map (pp env) (F.toList args))))
   pp _env (ValueType ptr) = text "#t<" <> viaShow ptr <> text ">"
   pp _env (ValueString str) = text (T.pack (show str))
 
@@ -568,7 +568,7 @@ instance Pretty VarInfo MacroAction where
   pp env (MacroActionTypeCase venv _loc ptr cases) =
     hang 2 $
     text "type-case" <+> text "#t<" <> viaShow ptr <> text ">" <+> text "of" <> line <>
-    vsep (map ppCase cases)
+    vsep (map ppCase (F.toList cases))
     where
       ppCase (pat, c) =
         let (patDoc, env') = ppBind env pat

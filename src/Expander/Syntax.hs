@@ -13,6 +13,8 @@ import Data.List (nub, sort)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Numeric.Natural
+import Data.Sequence (Seq(..))
+import Data.Foldable (toList)
 
 import Expander.Error
 import Expander.Monad
@@ -26,19 +28,19 @@ mustBeIdent (Syntax (Stx scs srcloc (Id x))) = return (Stx scs srcloc x)
 mustBeIdent other = throwError (NotIdentifier other)
 
 mustBeEmpty :: Syntax -> Expand (Stx ())
-mustBeEmpty (Syntax (Stx scs srcloc (List []))) = return (Stx scs srcloc ())
+mustBeEmpty (Syntax (Stx scs srcloc (List Empty))) = return (Stx scs srcloc ())
 mustBeEmpty other = throwError (NotEmpty other)
 
-mustBeCons :: Syntax -> Expand (Stx (Syntax, [Syntax]))
-mustBeCons (Syntax (Stx scs srcloc (List (x:xs)))) = return (Stx scs srcloc (x, xs))
+mustBeCons :: Syntax -> Expand (Stx (Syntax, Seq Syntax))
+mustBeCons (Syntax (Stx scs srcloc (List (x :<| xs)))) = return (Stx scs srcloc (x, xs))
 mustBeCons other = throwError (NotCons other)
 
-mustBeConsCons :: Syntax -> Expand (Stx (Syntax, Syntax, [Syntax]))
-mustBeConsCons (Syntax (Stx scs srcloc (List (x:y:xs)))) = return (Stx scs srcloc (x, y, xs))
+mustBeConsCons :: Syntax -> Expand (Stx (Syntax, Syntax, Seq Syntax))
+mustBeConsCons (Syntax (Stx scs srcloc (List (x :<| y :<| xs)))) = return (Stx scs srcloc (x, y, xs))
 mustBeConsCons other = throwError (NotConsCons other)
 
 
-mustBeList :: Syntax -> Expand (Stx [Syntax])
+mustBeList :: Syntax -> Expand (Stx (Seq Syntax))
 mustBeList (Syntax (Stx scs srcloc (List xs))) = return (Stx scs srcloc xs)
 mustBeList other = throwError (NotList other)
 
@@ -69,7 +71,7 @@ mustHaveEntries
      )
   => Syntax -> Expand (Stx r)
 mustHaveEntries stx@(Syntax (Stx scs srcloc (List xs))) = do
-  case checkLength xs of
+  case checkLength (toList xs) of
     Right r -> do
       pure (Stx scs srcloc r)
     Left lengths -> do
@@ -137,9 +139,9 @@ instance MustHaveShape Syntax where
   mustHaveShape = pure
 
 instance MustHaveShape () where
-  mustHaveShape (Syntax (Stx _ _ (List []))) = do
+  mustHaveShape (Syntax (Stx _ _ (List Empty))) = do
     pure ()
-  mustHaveShape other@(Syntax (Stx _ _ (List (_:_)))) = do
+  mustHaveShape other@(Syntax (Stx _ _ (List (_:<|_)))) = do
     throwError (NotEmpty other)
   mustHaveShape other = throwError (NotList other)
 
@@ -147,18 +149,27 @@ instance ( MustHaveShape car
          , MustHaveShape cdr
          )
         => MustHaveShape (car, cdr) where
-  mustHaveShape (Syntax (Stx scs srcloc (List (x:xs)))) = do
+  mustHaveShape (Syntax (Stx scs srcloc (List (x :<| xs)))) = do
     car <- mustHaveShape x
     cdr <- mustHaveShape (Syntax (Stx scs srcloc (List xs)))
     pure (car, cdr)
-  mustHaveShape other@(Syntax (Stx _ _ (List []))) = do
+  mustHaveShape other@(Syntax (Stx _ _ (List Empty))) = do
     throwError (NotCons other)
   mustHaveShape other = throwError (NotList other)
 
+instance MustHaveShape a => MustHaveShape (Seq a) where
+  mustHaveShape (Syntax (Stx _ _ (List Empty))) = do
+    pure Empty
+  mustHaveShape (Syntax (Stx scs srcloc (List (x :<| xs)))) = do
+    car <- mustHaveShape x
+    cdr <- mustHaveShape (Syntax (Stx scs srcloc (List xs)))
+    pure (car :<| cdr)
+  mustHaveShape other = throwError (NotList other)
+
 instance MustHaveShape a => MustHaveShape [a] where
-  mustHaveShape (Syntax (Stx _ _ (List []))) = do
-    pure []
-  mustHaveShape (Syntax (Stx scs srcloc (List (x:xs)))) = do
+  mustHaveShape (Syntax (Stx _ _ (List Empty))) = do
+    pure mempty
+  mustHaveShape (Syntax (Stx scs srcloc (List (x :<| xs)))) = do
     car <- mustHaveShape x
     cdr <- mustHaveShape (Syntax (Stx scs srcloc (List xs)))
     pure (car : cdr)

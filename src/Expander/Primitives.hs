@@ -61,11 +61,14 @@ module Expander.Primitives
   , primitiveDatatype
   ) where
 
-import Control.Lens hiding (List)
+import Control.Lens hiding (List, Empty)
 import Control.Monad.IO.Class
 import Control.Monad.Except
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Sequence (Seq(..))
+import qualified Data.Sequence as Seq
+import qualified Data.Foldable as F
 import Data.Traversable
 import Numeric.Natural
 
@@ -129,22 +132,22 @@ datatype dest outScopesDest stx = do
   Stx scs loc (_ :: Syntax, more) <- mustBeCons stx
   Stx _ _ (nameAndArgs, ctorSpecs) <- mustBeCons (Syntax (Stx scs loc (List more)))
   Stx _ _ (name, args) <- mustBeCons nameAndArgs
-  typeArgs <- for (zip [0..] args) $ \(i, a) ->
-    prepareTypeVar i a
+  typeArgs <- for (Seq.zip (Seq.fromList [0..]) args) $ uncurry prepareTypeVar
   sc <- freshScope $ T.pack $ "For datatype at " ++ shortShow (stxLoc stx)
-  let typeScopes = map (view _1) typeArgs ++ [sc]
+  let typeScopes = fmap (view _1) typeArgs :|> sc
   realName <- mustBeIdent (addScope' sc name)
   p <- currentPhase
   d <- freshDatatype realName
-  let argKinds = map (view _3) typeArgs
+  let argKinds = fmap (view _3) typeArgs
   addDatatype realName d argKinds
 
   ctors <- for ctorSpecs \ spec -> do
     Stx _ _ (cn, ctorArgs) <- mustBeCons spec
     realCN <- mustBeIdent cn
     ctor <- freshConstructor realCN
-    let ctorArgs' = [ foldr (addScope p) t typeScopes
-                    | t <- ctorArgs
+    let ctorArgs' = Seq.fromList $
+                    [ foldr (addScope p) t typeScopes
+                    | t <- F.toList ctorArgs
                     ]
     argTypes <- traverse (scheduleType KStar) ctorArgs'
     return (realCN, ctor, argTypes)
@@ -152,8 +155,7 @@ datatype dest outScopesDest stx = do
   let info =
         DatatypeInfo
         { _datatypeArgKinds = argKinds
-        , _datatypeConstructors =
-          [ ctor | (_, ctor, _) <- ctors ]
+        , _datatypeConstructors = fmap (view _2) ctors
         }
   modifyState $
     set (expanderCurrentDatatypes .
@@ -211,7 +213,7 @@ run dest outScopesDest stx = do
   Stx _ _ (_, expr) <- mustHaveEntries stx
   exprDest <- liftIO $ newSplitCorePtr
   linkOneDecl dest (Run (stxLoc stx) exprDest)
-  forkExpandSyntax (ExprDest (tIO (primitiveDatatype "Unit" [])) exprDest) expr
+  forkExpandSyntax (ExprDest (tIO (primitiveDatatype "Unit" Empty)) exprDest) expr
   linkDeclOutputScopes outScopesDest mempty
 
 meta :: DeclExpander -> DeclPrim
@@ -362,11 +364,11 @@ syntaxError t dest stx = do
   Stx _ _ (msg, locs) <- mustBeCons $ Syntax $ Stx scs srcloc (List args)
   msgDest <- schedule tSyntax msg
   locDests <- traverse (schedule tSyntax) locs
-  linkExpr dest $ CoreSyntaxError (SyntaxError locDests msgDest)
+  linkExpr dest $ CoreSyntaxError (SyntaxError (F.toList locDests) msgDest)
 
 identEqual :: HowEq -> ExprPrim
 identEqual how t dest stx = do
-  unify dest t (tMacro (primitiveDatatype "Bool" []))
+  unify dest t (tMacro (primitiveDatatype "Bool" Empty))
   Stx _ _ (_, id1, id2) <- mustHaveEntries stx
   newE <- CoreIdentEq how <$> schedule tSyntax id1 <*> schedule tSyntax id2
   linkExpr dest newE
@@ -473,18 +475,18 @@ makeIntroducer t dest stx = do
 
   where
     theType =
-      tMacro (tFun [primitiveDatatype "ScopeAction" [], tSyntax] tSyntax)
+      tMacro (tFun [primitiveDatatype "ScopeAction" Empty, tSyntax] tSyntax)
 
 log :: ExprPrim
 log t dest stx = do
-  unify dest (tMacro (primitiveDatatype "Unit" [])) t
+  unify dest (tMacro (primitiveDatatype "Unit" Empty)) t
   Stx _ _ (_, message) <- mustHaveEntries stx
   msgDest <- schedule tSyntax message
   linkExpr dest $ CoreLog msgDest
 
 whichProblem :: ExprPrim
 whichProblem t dest stx = do
-  unify dest (tMacro (primitiveDatatype "Problem" [])) t
+  unify dest (tMacro (primitiveDatatype "Problem" Empty)) t
   Stx _ _ (Identity _) <- mustHaveEntries stx
   linkExpr dest CoreWhichProblem
 
@@ -511,41 +513,38 @@ typeCase t dest stx = do
 type TypePrim =
   (Kind -> SplitTypePtr -> Syntax -> Expand (), TypePatternPtr -> Syntax -> Expand ())
 
-typeConstructor :: TypeConstructor -> [Kind] -> TypePrim
+typeConstructor :: TypeConstructor -> Seq Kind -> TypePrim
 typeConstructor ctor argKinds = (implT, implP)
   where
     implT k dest stx = do
       Stx _ _ (_, args) <- mustBeCons stx
-      if length args > length argKinds
+      if Seq.length args > Seq.length argKinds
         then throwError $ WrongTypeArity stx ctor
-                            (fromIntegral $ length argKinds)
-                            (length args)
+                            (fromIntegral $ Seq.length argKinds)
+                            (Seq.length args)
         else do
-          let missingArgs :: [Kind]
-              missingArgs = drop (length args) argKinds
+          let missingArgs :: Seq Kind
+              missingArgs = Seq.drop (Seq.length args) argKinds
           equateKinds stx (kFun missingArgs KStar) k
-          argDests <- traverse (uncurry scheduleType) (zip argKinds args)
+          argDests <- traverse (uncurry scheduleType) (Seq.zip argKinds args)
           linkType dest $ TyF ctor argDests
     implP dest stx = do
       Stx _ _ (_, args) <- mustBeCons stx
-      if length args > length argKinds
+      if Seq.length args > Seq.length argKinds
         then throwError $ WrongTypeArity stx ctor
-                            (fromIntegral $ length argKinds)
-                            (length args)
+                            (fromIntegral $ Seq.length argKinds)
+                            (Seq.length args)
         else do
           varInfo <- traverse prepareVar args
           sch <- trivialScheme tType
           -- FIXME kind check here
           linkTypePattern dest
-            (TypePattern $ TyF ctor [ (varStx, var)
-                                    | (_, varStx, var) <- varInfo
-                                    ])
-            [ (sc, n, x, sch)
-            | (sc, n, x) <- varInfo
-            ]
+            (TypePattern $ TyF ctor
+             (fmap (\(_,varStx,var) -> (varStx,var)) varInfo))
+             (fmap (\(sc,n,x) -> (sc,n,x,sch)) varInfo)
 
 baseType :: TypeConstructor -> TypePrim
-baseType ctor = typeConstructor ctor []
+baseType ctor = typeConstructor ctor Empty
 
 -------------
 -- Modules --
@@ -585,7 +584,7 @@ makeLocalType dest stx = do
         k' <- typeVarKind meta
         equateKinds tstx k k'
         _ <- mustBeIdent tstx
-        linkType tdest $ TyF t []
+        linkType tdest $ TyF t Empty
   let patImpl _ tstx =
         throwError $ NotValidType tstx
 
@@ -615,14 +614,14 @@ elsePattern (Right dest) stx = do
   (sc, x, v) <- prepareVar var
   linkTypePattern dest
     (AnyType x v)
-    [(sc, x, v, ty)]
+    (pure (sc, x, v, ty))
 
 -------------
 -- Helpers --
 -------------
 
 -- | Add the primitive macros that expand to datatype invocations
-addDatatype :: Ident -> Datatype -> [Kind] -> Expand ()
+addDatatype :: Ident -> Datatype -> Seq Kind -> Expand ()
 addDatatype name dt argKinds = do
   name' <- addRootScope' name
   let (tyImpl, patImpl) = typeConstructor (TDatatype dt) argKinds
@@ -638,48 +637,51 @@ expandPatternCase t (Stx _ _ (lhs, rhs)) = do
   p <- currentPhase
   sch <- trivialScheme tSyntax
   case lhs of
-    Syntax (Stx _ _ (List [Syntax (Stx _ _ (Id "ident")),
-                           patVar])) -> do
+    Syntax (Stx _ _ (List (Syntax (Stx _ _ (Id "ident"))
+                           :<| patVar
+                           :<| Empty))) -> do
       (sc, x', var) <- prepareVar patVar
       let rhs' = addScope p sc rhs
       rhsDest <- withLocalVarType x' var sch $ schedule t rhs'
       let patOut = SyntaxPatternIdentifier x' var
       return (patOut, rhsDest)
-    Syntax (Stx _ _ (List [Syntax (Stx _ _ (Id "integer")),
-                           patVar])) -> do
+    Syntax (Stx _ _ (List (Syntax (Stx _ _ (Id "integer")) :<|
+                           patVar :<| Empty))) -> do
       (sc, x', var) <- prepareVar patVar
       let rhs' = addScope p sc rhs
       strSch <- trivialScheme tInteger
       rhsDest <- withLocalVarType x' var strSch $ schedule t rhs'
       let patOut = SyntaxPatternInteger x' var
       return (patOut, rhsDest)
-    Syntax (Stx _ _ (List [Syntax (Stx _ _ (Id "string")),
-                           patVar])) -> do
+    Syntax (Stx _ _ (List (Syntax (Stx _ _ (Id "string")) :<|
+                           patVar :<| Empty))) -> do
       (sc, x', var) <- prepareVar patVar
       let rhs' = addScope p sc rhs
       strSch <- trivialScheme tString
       rhsDest <- withLocalVarType x' var strSch $ schedule t rhs'
       let patOut = SyntaxPatternString x' var
       return (patOut, rhsDest)
-    Syntax (Stx _ _ (List [Syntax (Stx _ _ (Id "list")),
-                           Syntax (Stx _ _ (List vars))])) -> do
+    Syntax (Stx _ _ (List (Syntax (Stx _ _ (Id "list")) :<|
+                           Syntax (Stx _ _ (List vars)) :<|
+                          Empty))) -> do
       varInfo <- traverse prepareVar vars
-      let rhs' = foldr (addScope p) rhs [sc | (sc, _, _) <- varInfo]
-      rhsDest <- withLocalVarTypes [(var, vIdent, sch) | (_, vIdent, var) <- varInfo] $
+      let rhs' = F.foldr (addScope p) rhs (fmap (\(sc,_,_) -> sc) varInfo)
+      rhsDest <- withLocalVarTypes (fmap (\(_,vIdent,var) -> (var,vIdent,sch)) varInfo) $
                    schedule t rhs'
-      let patOut = SyntaxPatternList [(vIdent, var) | (_, vIdent, var) <- varInfo]
+      let patOut = SyntaxPatternList (fmap (\(_,vIdent,var) -> (vIdent,var)) varInfo)
       return (patOut, rhsDest)
-    Syntax (Stx _ _ (List [Syntax (Stx _ _ (Id "cons")),
-                           car,
-                           cdr])) -> do
+    Syntax (Stx _ _ (List (Syntax (Stx _ _ (Id "cons"))
+                           :<| car
+                           :<| cdr
+                           :<| Empty))) -> do
       (sc, car', carVar) <- prepareVar car
       (sc', cdr', cdrVar) <- prepareVar cdr
       let rhs' = addScope p sc' $ addScope p sc rhs
-      rhsDest <- withLocalVarTypes [(carVar, car', sch), (cdrVar, cdr', sch)] $
+      rhsDest <- withLocalVarTypes ((carVar, car', sch) :<| (cdrVar, cdr', sch) :<| Empty) $
                    schedule t rhs'
       let patOut = SyntaxPatternCons car' carVar cdr' cdrVar
       return (patOut, rhsDest)
-    Syntax (Stx _ _ (List [])) -> do
+    Syntax (Stx _ _ (List Empty)) -> do
       rhsDest <- schedule t rhs
       return (SyntaxPatternEmpty, rhsDest)
     Syntax (Stx _ _ (Id "_")) -> do
@@ -737,7 +739,7 @@ prepareVar varStx = do
   bind b (EVarMacro var)
   return (sc, x', var)
 
-primitiveDatatype :: Text -> [Ty] -> Ty
+primitiveDatatype :: Text -> Seq Ty -> Ty
 primitiveDatatype name args =
   let dt = Datatype { _datatypeModule = KernelName kernelName
                     , _datatypeName = DatatypeName name
@@ -765,8 +767,8 @@ binaryIntegerPred f =
     ValueClosure $ HO $
     \(ValueInteger i2) ->
       if f i1 i2
-        then primitiveCtor "true" []
-        else primitiveCtor "false" []
+        then primitiveCtor "true" Empty
+        else primitiveCtor "false" Empty
 
 
 binaryStringPred :: (Text -> Text -> Bool) -> Value
@@ -776,5 +778,5 @@ binaryStringPred f =
     ValueClosure $ HO $
     \(ValueString str2) ->
       if f str1 str2
-        then primitiveCtor "true" []
-        else primitiveCtor "false" []
+        then primitiveCtor "true" Empty
+        else primitiveCtor "false" Empty

@@ -77,7 +77,7 @@ newModulePtr = ModulePtr <$> newUnique
 
 data ImportSpec
   = ImportModule (Stx ModuleName)
-  | ImportOnly ImportSpec [Ident]
+  | ImportOnly ImportSpec (Seq Ident)
   | ShiftImports ImportSpec Natural
   | RenameImports ImportSpec [(Ident, Ident)]
   | PrefixImports ImportSpec Text
@@ -147,8 +147,8 @@ filterExports ok (Exports es) =
       in if HM.null out then Nothing else Just out
 
 data ExportSpec
-  = ExportIdents [Ident]
-  | ExportRenamed ExportSpec [(Text, Text)]
+  = ExportIdents (Seq Ident)
+  | ExportRenamed ExportSpec [(Text,Text)]
   | ExportPrefixed ExportSpec Text
   | ExportShifted ExportSpec Natural
   deriving (Data, Show, Eq)
@@ -198,20 +198,20 @@ newDeclPtr = DeclPtr <$> newUnique
 
 data Decl ty scheme decl expr
   = Define Ident Var scheme expr
-  | DefineMacros [(Ident, MacroVar, expr)]
+  | DefineMacros (Seq (Ident, MacroVar, expr))
   | Meta decl
   | Example SrcLoc scheme expr
   | Run SrcLoc expr
   | Import ImportSpec
   | Export ExportSpec
-  | Data Ident DatatypeName [Kind] [(Ident, Constructor, [ty])]
+  | Data Ident DatatypeName (Seq Kind) (Seq (Ident, Constructor, Seq ty))
     -- ^ User-written name, internal name, type-argument kinds, constructors
   deriving (Data, Functor, Show, Eq)
 
 
 instance Bifunctor (Decl ty scheme) where
   bimap _f g (Define x v t e) = Define x v t (g e)
-  bimap _f g (DefineMacros ms) = DefineMacros [(x, v, g e) | (x, v, e) <- ms]
+  bimap _f g (DefineMacros ms) = DefineMacros (fmap (\ (x,v,e) -> (x,v,g e)) ms)
   bimap f _g (Meta d) = Meta (f d)
   bimap _f g (Example loc t e) = Example loc t (g e)
   bimap _f g (Run loc e) = Run loc (g e)

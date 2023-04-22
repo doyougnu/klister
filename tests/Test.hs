@@ -207,8 +207,8 @@ moduleTests = testGroup "Module tests" [ shouldWork, shouldn'tWork ]
               filter (\case {(Example {}) -> True; _ -> False}) &
               \case
                 (Example _ _ e1 :<| Example _ _ e2 :<| Empty) -> do
-                  assertAlphaEq "first example" e1 (Core (corePrimitiveCtor "true" []))
-                  assertAlphaEq "second example" e2 (Core (corePrimitiveCtor "false" []))
+                  assertAlphaEq "first example" e1 (Core (corePrimitiveCtor "true" Empty))
+                  assertAlphaEq "second example" e2 (Core (corePrimitiveCtor "false" Empty))
                 _ -> assertFailure "Expected two examples"
           )
         , ( "examples/lang.kl"
@@ -250,7 +250,7 @@ moduleTests = testGroup "Module tests" [ shouldWork, shouldn'tWork ]
                             :<| (view completeDecl -> Define {})
                             :<| Empty
                           )
-                 :<| DefineMacros [(_, _, _)]
+                 :<| DefineMacros ((_, _, _) :<| Empty)
                  :<| Example _ _ ex
                  :<| Empty) ->
                   assertAlphaEq "Example is integer" ex (Core (CoreInteger 1))
@@ -260,15 +260,15 @@ moduleTests = testGroup "Module tests" [ shouldWork, shouldn'tWork ]
           , \m _ ->
               view moduleBody m & fmap (view completeDecl) &
               \case
-                (Import _ :<| Import _ :<| DefineMacros [(_, _, _)] :<| Example _ _ ex :<| Empty) ->
-                  assertAlphaEq "Example is (false)" ex (Core (corePrimitiveCtor "false" []))
+                (Import _ :<| Import _ :<| DefineMacros ((_, _, _) :<| Empty) :<| Example _ _ ex :<| Empty) ->
+                  assertAlphaEq "Example is (false)" ex (Core (corePrimitiveCtor "false" Empty))
                 _ -> assertFailure "Expected import, import, macro, example"
           )
         , ( "examples/macro-body-shift.kl"
           , \m _ ->
               view moduleBody m & fmap (view completeDecl) &
               \case
-                (Import _ :<| Define _ _ _ e :<| DefineMacros [(_, _, _)] :<| Empty) -> do
+                (Import _ :<| Define _ _ _ e :<| (DefineMacros ((_, _, _) :<| Empty)  :<| Empty)) -> do
                   spec <- lam \_x -> lam \y -> lam \_z -> y
                   assertAlphaEq "Definition is λx y z . y" e spec
                 _ -> assertFailure "Expected an import, a definition, and a macro"
@@ -305,8 +305,8 @@ moduleTests = testGroup "Module tests" [ shouldWork, shouldn'tWork ]
           , \m _ ->
               view moduleBody m & fmap (view completeDecl) & toList &
               \case
-                (Import _ : Import _ : Import _ : Import _ : Define _ fun1 _ firstFun : DefineMacros [_] :
-                 Define _ fun2 _ secondFun : Example _ _ e1 : Example _ _ e2 : DefineMacros [_] :
+                (Import _ : Import _ : Import _ : Import _ : Define _ fun1 _ firstFun : DefineMacros (_ :<| Empty) :
+                 Define _ fun2 _ secondFun : Example _ _ e1 : Example _ _ e2 : DefineMacros (_ :<| Empty) :
                  Example _ _ e3 : _) -> do
                   spec1 <- lam \x -> lam \_y -> x
                   spec2 <- lam \_x -> lam \y -> y
@@ -423,42 +423,40 @@ testQuasiquoteExamples examples =
         other -> assertFailure ("Expected thing, got " ++ show other)
       assertAlphaEq "Third and first example are the same" e3 e1
       case e4 of
-        Core (CoreList (ScopedList [Core (CoreSyntax (Syntax (Stx _ _ (Id "thing"))))] _)) -> pure ()
+        Core (CoreList (ScopedList (Core (CoreSyntax (Syntax (Stx _ _ (Id "thing")))) :<| Empty) _)) -> pure ()
         other -> assertFailure ("Expected (thing), got " ++ shortShow other)
       case e5 of
-        Core (CoreList (ScopedList [expr] _)) ->
+        Core (CoreList (ScopedList (expr :<| Empty) _)) ->
           assertAlphaEq "the expression is e1" expr e1
         other -> assertFailure ("Expected [nothing], got " ++ shortShow other)
       case e6 of
-        Core (CoreList (ScopedList [ Core (CoreSyntax (Syntax (Stx _ _ (Id "list-syntax"))))
-                                   , Core (CoreList
-                                            (ScopedList [ expr
-                                                        , Core (CoreSyntax (Syntax (Stx _ _ (Id "thing"))))
-                                                        ]
-                                              _))
-                                   , _
-                                   ]
+        Core (CoreList (ScopedList (Core (CoreSyntax (Syntax (Stx _ _ (Id "list-syntax"))))
+                                     :<| Core (CoreList
+                                                (ScopedList (expr
+                                                              :<| Core (CoreSyntax (Syntax (Stx _ _ (Id "thing"))))
+                                                              :<| Empty)
+                                                  _))
+                                   :<| _)
                         _)) -> assertAlphaEq "the expression is e1" expr e1
         other -> assertFailure ("Expected [list-syntax [nothing thing] thing], got " ++ shortShow other)
       case e7 of
-        Core (CoreList (ScopedList [ Core (CoreSyntax (Syntax (Stx _ _ (Id "list-syntax"))))
-                                   , Core (CoreList
-                                            (ScopedList [ expr
-                                                        , Core (CoreSyntax (Syntax (Stx _ _ (Id "thing"))))
-                                                        , Core (CoreEmpty _)
-                                                        ]
-                                              _))
-                                   , _
-                                   ]
+        Core (CoreList (ScopedList (Core (CoreSyntax (Syntax (Stx _ _ (Id "list-syntax"))))
+                                     :<| Core (CoreList
+                                                (ScopedList (expr
+                                                              :<| Core (CoreSyntax (Syntax (Stx _ _ (Id "thing"))))
+                                                              :<| Core (CoreEmpty _)
+                                                              :<| Empty)
+                                                  _))
+                                     :<| _)
                         _))  -> assertAlphaEq "the expression is e1" expr e1
         other -> assertFailure ("Expected [list-syntax [nothing thing ()] thing], got " ++ shortShow other)
       -- assertFailure
       case e8 of
         Core (CoreList (ScopedList
-                         [ Core (CoreSyntax (Syntax (Stx _ _ (Id "thing"))))
-                         , expr
-                         , Core (CoreSyntax (Syntax (Stx _ _ (Id "thing"))))
-                         ]
+                         (Core (CoreSyntax (Syntax (Stx _ _ (Id "thing"))))
+                           :<| expr
+                           :<| Core (CoreSyntax (Syntax (Stx _ _ (Id "thing"))))
+                           :<| Empty)
                          _)) -> assertAlphaEq "the expression is e1" expr e1
         other -> assertFailure ("Expected [thing nothing thing], got " ++ shortShow other)
 
@@ -656,7 +654,7 @@ genCoreF subgen varGen =
         <$> sameVars (constructor True False)
         <*> sameVars (constructor False True)
       nonRecursive =
-        [ (\b -> corePrimitiveCtor (if b then "true" else "false") []) <$> Gen.bool
+        [ (\b -> corePrimitiveCtor (if b then "true" else "false") mempty) <$> Gen.bool
         , CoreInteger . fromIntegral <$> Gen.int range1024
         ] ++ map (fmap CoreVar) (maybeToList varGen)
       recursive =

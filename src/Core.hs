@@ -20,12 +20,15 @@ module Core where
 
 import Control.Lens hiding (elements)
 import Control.Monad
+import Control.Arrow (second)
 import Data.Bifunctor.TH
 import Data.Data (Data)
 import Data.List
 import Data.Foldable
 import Data.Text (Text)
 import Data.Traversable
+import Data.Sequence (Seq)
+import qualified Data.Sequence as Seq
 
 import Alpha
 import Datatype
@@ -78,7 +81,7 @@ data TypePattern
   deriving (Data, Eq, Show)
 
 data ConstructorPatternF pat
-  = CtorPattern !Constructor [pat]
+  = CtorPattern !Constructor (Seq pat)
   | PatternVar Ident Var
   deriving (Data, Eq, Foldable, Functor, Show, Traversable)
 makePrisms ''ConstructorPatternF
@@ -103,7 +106,7 @@ data SyntaxPattern
   | SyntaxPatternString Ident Var
   | SyntaxPatternEmpty
   | SyntaxPatternCons Ident Var Ident Var
-  | SyntaxPatternList [(Ident, Var)]
+  | SyntaxPatternList (Seq (Ident, Var))
   | SyntaxPatternAny
   deriving (Data, Eq, Show)
 makePrisms ''SyntaxPattern
@@ -130,7 +133,7 @@ data ScopedCons core = ScopedCons
 makeLenses ''ScopedCons
 
 data ScopedList core = ScopedList
-  { _scopedListElements :: [core]
+  { _scopedListElements :: Seq core
   , _scopedListScope    :: core
   }
   deriving (Data, Eq, Functor, Foldable, Show, Traversable)
@@ -160,8 +163,8 @@ data CoreF typePat pat core
   | CoreLetFun Ident Var Ident Var core core
   | CoreLam Ident Var core
   | CoreApp core core
-  | CoreCtor Constructor [core] -- ^ Constructor application
-  | CoreDataCase SrcLoc core [(pat, core)]
+  | CoreCtor Constructor (Seq core) -- ^ Constructor application
+  | CoreDataCase SrcLoc core (Seq (pat, core))
   | CoreInteger Integer
   | CoreString Text
   | CoreError core
@@ -174,7 +177,7 @@ data CoreF typePat pat core
   | CoreMakeIntroducer
   | CoreWhichProblem
   | CoreSyntax Syntax
-  | CoreCase SrcLoc core [(SyntaxPattern, core)]
+  | CoreCase SrcLoc core (Seq (SyntaxPattern, core))
   | CoreIdent (ScopedIdent core)
   | CoreEmpty (ScopedEmpty core)
   | CoreCons (ScopedCons core)
@@ -182,7 +185,7 @@ data CoreF typePat pat core
   | CoreIntegerSyntax (ScopedInteger core)
   | CoreStringSyntax (ScopedString core)
   | CoreReplaceLoc core core
-  | CoreTypeCase SrcLoc core [(typePat, core)]
+  | CoreTypeCase SrcLoc core (Seq (typePat, core))
   deriving (Data, Eq, Functor, Foldable, Show, Traversable)
 makePrisms ''CoreF
 deriveBifunctor ''CoreF
@@ -204,9 +207,9 @@ mapCoreF _f _g h (CoreLam n x body) =
 mapCoreF _f _g h (CoreApp rator rand) =
   CoreApp (h rator) (h rand)
 mapCoreF _f _g h (CoreCtor ctor args) =
-  CoreCtor ctor (map h args)
+  CoreCtor ctor (fmap h args)
 mapCoreF _f g h (CoreDataCase loc scrut cases) =
-  CoreDataCase loc (h scrut) [(g pat, h c) | (pat, c) <- cases]
+  CoreDataCase loc (h scrut) (fmap (bimap g h) cases)
 mapCoreF _f _g _h (CoreInteger i) =
   CoreInteger i
 mapCoreF _f _g _h (CoreString str) =
@@ -230,7 +233,7 @@ mapCoreF _f _g _h CoreWhichProblem =
 mapCoreF _f _g _h (CoreSyntax stx) =
   CoreSyntax stx
 mapCoreF _f _g h (CoreCase loc scrut cases) =
-  CoreCase loc (h scrut) [(pat, h c) | (pat, c) <- cases]
+  CoreCase loc (h scrut) (fmap (second h) cases)
 mapCoreF _f _g h (CoreIdent ident) =
   CoreIdent (fmap h ident)
 mapCoreF _f _g h (CoreEmpty args) =
@@ -246,7 +249,7 @@ mapCoreF _f _g h (CoreStringSyntax str) =
 mapCoreF _f _g h (CoreReplaceLoc src dest) =
   CoreReplaceLoc (h src) (h dest)
 mapCoreF f _g h (CoreTypeCase loc scrut cases) =
-  CoreTypeCase loc (h scrut) [(f pat, h c) | (pat, c) <- cases]
+  CoreTypeCase loc (h scrut) (fmap (bimap f h) cases)
 
 traverseCoreF :: Applicative f => (a -> f d) -> (b -> f e) -> (c -> f g) -> CoreF a b c -> f (CoreF d e g)
 traverseCoreF _f _g _h (CoreVar x) =
@@ -305,7 +308,7 @@ traverseCoreF f _g h (CoreTypeCase loc scrut cases) =
   CoreTypeCase loc <$> h scrut <*> for cases \(pat, c) -> (,) <$> f pat <*> h c
 
 
-corePrimitiveCtor :: Text -> [a] -> CoreF typePat pat a
+corePrimitiveCtor :: Text -> Seq a -> CoreF typePat pat a
 corePrimitiveCtor name args =
   let ctor = Constructor (KernelName kernelName) (ConstructorName name)
   in CoreCtor ctor args
@@ -394,7 +397,7 @@ instance AlphaEq a => AlphaEq (ConstructorPatternF a) where
   alphaCheck (CtorPattern c1 vars1)
              (CtorPattern c2 vars2) = do
     alphaCheck c1 c2
-    for_ (zip vars1 vars2) (uncurry alphaCheck)
+    for_ (Seq.zip vars1 vars2) (uncurry alphaCheck)
   alphaCheck (PatternVar _ x1)
              (PatternVar _ x2) = do
     alphaCheck x1 x2
@@ -427,7 +430,7 @@ instance AlphaEq SyntaxPattern where
     alphaCheck xs1  xs2
   alphaCheck (SyntaxPatternList xs1)
              (SyntaxPatternList xs2) = do
-    alphaCheck (map snd xs1) (map snd xs2)
+    alphaCheck (fmap snd xs1) (fmap snd xs2)
   alphaCheck _ _ = notAlphaEquivalent
 
 instance AlphaEq core => AlphaEq (ScopedIdent core) where
@@ -512,7 +515,7 @@ instance (ShortShow typePat, ShortShow pat, ShortShow core) =>
     = "(DataCase "
    ++ shortShow scrut
    ++ " "
-   ++ intercalate ", " (map shortShow cases)
+   ++ intercalate ", " (map shortShow (toList cases))
    ++ ")"
   shortShow (CoreInteger i)
     = show i
@@ -588,7 +591,7 @@ instance (ShortShow typePat, ShortShow pat, ShortShow core) =>
     = "(TypeCase "
    ++ shortShow scrut
    ++ " "
-   ++ intercalate ", " (map shortShow pats)
+   ++ intercalate ", " (map shortShow (toList pats))
    ++ ")"
 
 
@@ -601,7 +604,7 @@ instance ShortShow ConstructorPattern where
 instance ShortShow a => ShortShow (ConstructorPatternF a) where
   shortShow (CtorPattern ctor vars) =
     "(" ++ shortShow ctor ++
-    " " ++ intercalate " " (map shortShow vars) ++
+    " " ++ intercalate " " (map shortShow (toList vars)) ++
     ")"
   shortShow (PatternVar ident _var) =
     "(PatternVar " ++ shortShow ident ++ " )"
@@ -626,7 +629,7 @@ instance ShortShow SyntaxPattern where
    ++ ")"
   shortShow (SyntaxPatternList xs)
     = "(List "
-   ++ shortShow (map snd xs)
+   ++ shortShow (fmap snd xs)
    ++ ")"
   shortShow SyntaxPatternAny = "_"
 

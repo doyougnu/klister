@@ -9,11 +9,13 @@ module Expander.TC (
   equateKinds, typeVarKind
   ) where
 
-import Control.Lens hiding (indices)
+import Control.Lens hiding (indices, Empty)
 import Control.Monad.Except
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.Foldable
 import Numeric.Natural
+import Data.Sequence (Seq(..))
+import qualified Data.Sequence as Seq
 
 import Expander.Monad
 import Core
@@ -106,12 +108,12 @@ freshMeta kind = do
   return ptr
 
 
-inst :: UnificationErrorBlame blame => blame -> Scheme Ty -> [Ty] -> Expand Ty
+inst :: UnificationErrorBlame blame => blame -> Scheme Ty -> Seq Ty -> Expand Ty
 inst blame (Scheme argKinds ty) ts
   | length ts /= length argKinds =
     throwError $ InternalError "Mismatch in number of type vars"
   | otherwise = do
-      traverse_ (uncurry $ checkKind blame) (zip argKinds ts)
+      traverse_ (uncurry $ checkKind blame) (Seq.zip argKinds ts)
       instTy ty
   where
     instTy :: Ty -> Expand Ty
@@ -127,11 +129,11 @@ inst blame (Scheme argKinds ty) ts
       -- If ctor was a TSchemaVar which got instantiated to a partially applied
       -- type constructor such as (TyF TFun [TInteger]), we want to append the remaining
       -- type arguments, e.g. [TSyntax], in order to get (TyF TFun [TInteger, TSyntax]).
-      pure $ TyF ctor' (tArgsPrefix ++ tArgsSuffix)
+      pure $ TyF ctor' (tArgsPrefix <> tArgsSuffix)
 
     instCtor :: TypeConstructor -> TyF Ty
-    instCtor (TSchemaVar i) = unTy $ ts !! fromIntegral i
-    instCtor ctor           = TyF ctor []
+    instCtor (TSchemaVar i) = unTy $ ts `Seq.index` fromIntegral i
+    instCtor ctor           = TyF ctor Empty
 
 
 specialize :: UnificationErrorBlame blame => blame -> Scheme Ty -> Expand Ty
@@ -161,35 +163,35 @@ notFreeInCtx var = do
 generalizeType :: Ty -> Expand (Scheme Ty)
 generalizeType ty = do
   canGeneralize <- filterM notFreeInCtx =<< metas ty
-  (body, (_, _, argKinds)) <- flip runStateT (0, mempty, []) $ do
+  (body, (_, _, argKinds)) <- flip runStateT (0, mempty, mempty) $ do
     genTyVars canGeneralize ty
   pure $ Scheme argKinds body
 
   where
     genTyVars ::
       [MetaPtr] -> Ty ->
-      StateT (Natural, Store MetaPtr Natural, [Kind]) Expand Ty
+      StateT (Natural, Store MetaPtr Natural, Seq Kind) Expand Ty
     genTyVars vars t = do
       (Ty t') <- lift $ normType t
       Ty <$> genVarsTyF vars t'
 
     genVarsTyF ::
       [MetaPtr] -> TyF Ty ->
-      StateT (Natural, Store MetaPtr Natural, [Kind]) Expand (TyF Ty)
+      StateT (Natural, Store MetaPtr Natural, Seq Kind) Expand (TyF Ty)
     genVarsTyF vars (TyF ctor args) =
       TyF <$> genVarsCtor vars ctor
           <*> traverse (genTyVars vars) args
 
     genVarsCtor ::
       [MetaPtr] -> TypeConstructor ->
-      StateT (Natural, Store MetaPtr Natural, [Kind]) Expand TypeConstructor
+      StateT (Natural, Store MetaPtr Natural, Seq Kind) Expand TypeConstructor
     genVarsCtor vars (TMetaVar v)
       | v `elem` vars = do
           (i, indices, argKinds) <- get
           case St.lookup v indices of
             Nothing -> do
               k <- lift $ typeVarKind v
-              put (i + 1, St.insert v i indices, argKinds ++ [k])
+              put (i + 1, St.insert v i indices, argKinds :|> k)
               pure $ TSchemaVar i
             Just j -> pure $ TSchemaVar j
       | otherwise = pure $ TMetaVar v
@@ -239,46 +241,48 @@ unifyWithBlame blame depth t1 t2 = do
         if | ptr1 == ptr2 -> pure ()
            | l1 < l2 -> linkVar ptr1 t2
            | otherwise -> linkVar ptr2 t1
-        traverse_ (uncurry $ unifyWithBlame blame (depth + 1)) (zip args1 args2)
+        traverse_ (uncurry $ unifyWithBlame blame (depth + 1)) (Seq.zip args1 args2)
       | null args1 = linkVar ptr1 t2
       | null args2 = linkVar ptr2 t1
       | otherwise = do
-          let argCount1 = length args1
-          let argCount2 = length args2
+          let argCount1 = Seq.length args1
+          let argCount2 = Seq.length args2
           let argCount = min argCount1 argCount2
-          let args1' = drop (argCount1 - argCount) args1
-          let args2' = drop (argCount2 - argCount) args2
-          traverse_ (uncurry $ unifyWithBlame blame (depth + 1)) (zip args1' args2')
+          let args1' = Seq.drop (argCount1 - argCount) args1
+          let args2' = Seq.drop (argCount2 - argCount) args2
+          traverse_ (uncurry $ unifyWithBlame blame (depth + 1)) (Seq.zip args1' args2')
           unifyWithBlame blame (depth + 1)
-            (Ty (TyF (TMetaVar ptr1) (take (argCount1 - argCount) args1)))
-            (Ty (TyF (TMetaVar ptr2) (take (argCount2 - argCount) args2)))
+            (Ty (TyF (TMetaVar ptr1) (Seq.take (argCount1 - argCount) args1)))
+            (Ty (TyF (TMetaVar ptr2) (Seq.take (argCount2 - argCount) args2)))
 
     -- Flex-rigid
     unifyTyFs shouldBe@(TyF (TMetaVar ptr1) args1) received@(TyF ctor2 args2)
       | null args1 =
         linkVar ptr1 t2
       | length args1 <= length args2 = do
+          let arg_diff = Seq.length args2 - Seq.length args1
+          let args2' = Seq.take arg_diff args2
           traverse_ (uncurry $ unifyWithBlame blame (depth + 1)) $
-            zip args1 (drop (length args2 - length args1) args2)
-          let args2' = take (length args2 - length args1) args2
-          unifyWithBlame blame (depth + 1) (Ty $ TyF (TMetaVar ptr1) []) (Ty $ TyF ctor2 args2')
+            Seq.zip args1 (Seq.drop arg_diff args2)
+          unifyWithBlame blame (depth + 1) (Ty $ TyF (TMetaVar ptr1) Empty) (Ty $ TyF ctor2 args2')
       | otherwise = mismatch shouldBe received
 
     unifyTyFs shouldBe@(TyF ctor1 args1) received@(TyF (TMetaVar ptr2) args2)
       | null args2 = do
           linkVar ptr2 t1
-      | length args2 <= length args1 = do
+      | Seq.length args2 <= Seq.length args1 = do
+          let arg_diff = Seq.length args1 - Seq.length args2
+          let args1'   = Seq.take arg_diff args1
           traverse_ (uncurry $ unifyWithBlame blame (depth + 1)) $
-            zip (drop (length args1 - length args2) args1) args2
-          let args1' = take (length args1 - length args2) args1
-          unifyWithBlame blame (depth + 1) (Ty $ TyF ctor1 args1') (Ty $ TyF (TMetaVar ptr2) [])
+            Seq.zip (Seq.drop arg_diff args1) args2
+          unifyWithBlame blame (depth + 1) (Ty $ TyF ctor1 args1') (Ty $ TyF (TMetaVar ptr2) Empty)
       | otherwise = mismatch shouldBe received
 
 
     unifyTyFs shouldBe@(TyF ctor1 args1) received@(TyF ctor2 args2)
       -- Rigid-rigid
-      | ctor1 == ctor2 && length args1 == length args2 =
-          for_ (zip args1 args2) $ \(arg1, arg2) ->
+      | ctor1 == ctor2 && Seq.length args1 == Seq.length args2 =
+          for_ (Seq.zip args1 args2) $ \(arg1, arg2) ->
             unifyWithBlame blame (depth + 1) arg1 arg2
       | otherwise = mismatch shouldBe received
 
@@ -370,9 +374,9 @@ inferKind blame (Ty (TyF ctor args)) = do
     ctorKind TInteger = pure KStar
     ctorKind TString = pure KStar
     ctorKind TOutputPort = pure KStar
-    ctorKind TFun = pure $ kFun [KStar, KStar] KStar
-    ctorKind TMacro = pure $ kFun [KStar] KStar
-    ctorKind TIO = pure $ kFun [KStar] KStar
+    ctorKind TFun = pure $ kFun (KStar :<| KStar :<| Empty) KStar
+    ctorKind TMacro = pure $ kFun (pure KStar) KStar
+    ctorKind TIO = pure $ kFun (pure KStar) KStar
     ctorKind TType = pure KStar
     ctorKind (TDatatype dt) = do
       DatatypeInfo argKinds _ <- datatypeInfo dt
@@ -380,11 +384,11 @@ inferKind blame (Ty (TyF ctor args)) = do
     ctorKind (TSchemaVar _) = throwError $ InternalError "Tried to find kind in open context"
     ctorKind (TMetaVar mv) = typeVarKind mv
 
-    appKind k [] = pure k
-    appKind (KFun k1 k2) (k : ks) =
+    appKind k Empty = pure k
+    appKind (KFun k1 k2) (k :<| ks) =
       equateKinds blame k1 k *> appKind k2 ks
-    appKind other (k : ks) = do
+    appKind other (k :<| ks) = do
       k1 <- KMetaVar <$> liftIO newKindVar
       k2 <- KMetaVar <$> liftIO newKindVar
       equateKinds blame other (KFun k1 k2)
-      appKind (KFun k1 k2) (k : ks)
+      appKind (KFun k1 k2) (k :<| ks)

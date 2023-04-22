@@ -3,6 +3,7 @@
 module Expander.Task where
 
 import qualified Data.Text as T
+import Data.Sequence (Seq)
 
 import Binding
 import Core
@@ -38,7 +39,7 @@ data MacroDest
 
 data ExpanderTask
   = ExpandSyntax MacroDest Syntax
-  | AwaitingTypeCase SrcLoc MacroDest Ty VEnv [(TypePattern, Core)] [Closure]
+  | AwaitingTypeCase SrcLoc MacroDest Ty VEnv (Seq (TypePattern, Core)) [Closure]
   | AwaitingMacro MacroDest TaskAwaitMacro
   | AwaitingDefn Var Ident Binding SplitCorePtr Ty SplitCorePtr Syntax
     -- ^ Waiting on var, binding, and definiens, destination, syntax to expand
@@ -55,7 +56,7 @@ data ExpanderTask
     -- ^ The expression whose type should be generalized, and the place to put the resulting scheme
   | ExpandVar Ty SplitCorePtr Syntax Var
     -- ^ Expected type, destination, origin syntax, and variable to use if it's acceptable
-  | EstablishConstructors ScopeSet DeclOutputScopesPtr Datatype [(Ident, Constructor, [SplitTypePtr])]
+  | EstablishConstructors ScopeSet DeclOutputScopesPtr Datatype (Seq (Ident, Constructor, Seq SplitTypePtr))
   | AwaitingPattern PatternPtr Ty SplitCorePtr Syntax
   | AwaitingTypePattern TypePatternPtr Ty SplitCorePtr Syntax
   deriving (Show)

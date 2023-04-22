@@ -20,6 +20,8 @@ import Control.Lens hiding (List)
 import Data.Data (Data)
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Sequence (Seq)
+import Data.Foldable (toList)
 
 import Alpha
 import ModuleName
@@ -42,7 +44,7 @@ data ExprF a
   = Id Text
   | String Text
   | Integer Integer
-  | List [a]
+  | List (Seq a)
   deriving (Data, Eq, Functor, Show)
 makePrisms ''ExprF
 
@@ -82,7 +84,7 @@ instance HasScopes Syntax where
       mapRec (Id x) = Id x
       mapRec (String str) = String str
       mapRec (Integer i) = Integer i
-      mapRec (List xs) = List $ map (\stx -> mapScopes f stx) xs
+      mapRec (List xs) = List $ fmap (mapScopes f) xs
 
 instance Phased (Stx Text) where
   shift i = mapScopes (shift i)
@@ -145,7 +147,7 @@ syntaxText (Syntax (Stx _ _ e)) = go e
     go (Id x) = x
     go (String str) = T.pack $ show str
     go (Integer s) = T.pack (show s)
-    go (List xs) = "(" <> T.intercalate " " (map syntaxText xs) <> ")"
+    go (List xs) = "(" <> T.intercalate " " (map syntaxText $ toList xs) <> ")"
 
 instance AlphaEq a => AlphaEq (Stx a) where
   alphaCheck (Stx scopeSet1 srcLoc1 x1)
@@ -175,7 +177,7 @@ instance ShortShow a => ShortShow (Stx a) where
 instance ShortShow a => ShortShow (ExprF a) where
   shortShow (Id x) = shortShow x
   shortShow (String s) = show s
-  shortShow (List xs) = shortShow xs
+  shortShow (List xs) = shortShow $ toList xs
   shortShow (Integer s) = show s
 
 instance ShortShow Syntax where

@@ -150,14 +150,15 @@ module Expander.Monad
 
 import Control.Applicative
 import Control.Arrow
-import Control.Lens
+import Control.Lens hiding (Empty)
 import Control.Monad.Except
 import Control.Monad.Reader
-import Data.Foldable
+import qualified Data.Foldable as F
 import Data.IORef
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Data.Sequence (Seq(..))
+import qualified Data.Sequence as Seq
 import Data.Maybe
 import Data.Monoid
 import Data.Text (Text)
@@ -197,6 +198,7 @@ import World
 
 import Util.Store (Store)
 import qualified Util.Store as S
+import Util.Key (HasKey)
 
 newtype Expand a = Expand
   { runExpand :: ReaderT ExpanderContext (ExceptT ExpansionErr IO) a
@@ -208,7 +210,7 @@ execExpand ctx act = runExceptT $ runReaderT (runExpand act) ctx
 
 
 newtype TaskID = TaskID Unique
-  deriving newtype (Eq, Ord)
+  deriving newtype (Eq, Ord, HasKey)
 
 instance Show TaskID where
   show (TaskID u) = "(TaskID " ++ show (hashUnique u) ++ ")"
@@ -277,13 +279,13 @@ data ExpanderState = ExpanderState
   , _expanderNextScopeNum       :: !Int
   , _expanderGlobalBindingTable :: !BindingTable
   , _expanderExpansionEnv       :: !ExpansionEnv
-  , _expanderTasks              :: [(TaskID, ExpanderLocal, ExpanderTask)]
+  , _expanderTasks              :: Seq (TaskID, ExpanderLocal, ExpanderTask)
   , _expanderOriginLocations    :: !(Store SplitCorePtr SrcLoc)
   , _expanderCompletedCore      :: !(Store SplitCorePtr (CoreF TypePatternPtr PatternPtr SplitCorePtr))
   , _expanderCompletedPatterns  :: !(Store PatternPtr (ConstructorPatternF PatternPtr))
   , _expanderCompletedTypePatterns :: !(Store TypePatternPtr TypePattern)
   , _expanderPatternBinders     :: !(Store PatternPtr (Either [PatternPtr] (Scope, Ident, Var, SchemePtr)))
-  , _expanderTypePatternBinders :: !(Store TypePatternPtr [(Scope, Ident, Var, SchemePtr)])
+  , _expanderTypePatternBinders :: !(Store TypePatternPtr (Seq (Scope, Ident, Var, SchemePtr)))
   , _expanderCompletedTypes     :: !(Store SplitTypePtr (TyF SplitTypePtr))
   , _expanderCompletedDeclTrees :: !(Store DeclTreePtr (DeclTreeF DeclPtr DeclTreePtr))
   , _expanderCompletedDecls     :: !(Store DeclPtr (Decl SplitTypePtr SchemePtr DeclTreePtr SplitCorePtr))
@@ -430,7 +432,7 @@ linkPattern :: PatternPtr -> ConstructorPatternF PatternPtr -> Expand ()
 linkPattern dest pat =
   modifyState $ over expanderCompletedPatterns (<> S.singleton dest pat)
 
-linkTypePattern :: TypePatternPtr -> TypePattern -> [(Scope, Ident, Var, SchemePtr)] -> Expand ()
+linkTypePattern :: TypePatternPtr -> TypePattern -> Seq (Scope, Ident, Var, SchemePtr) -> Expand ()
 linkTypePattern dest pat vars = do
   modifyState $ set (expanderTypePatternBinders . at dest) $ Just vars
   modifyState $ over expanderCompletedTypePatterns (<> S.singleton dest pat)
@@ -491,13 +493,13 @@ freshMacroVar = MacroVar <$> liftIO newUnique
 stillStuck :: TaskID -> ExpanderTask -> Expand ()
 stillStuck tid task = do
   localState <- view expanderLocal
-  overIORef expanderState expanderTasks ((tid, localState, task) :)
+  overIORef expanderState expanderTasks ((tid, localState, task) :<|)
 
 forkExpanderTask :: ExpanderTask -> Expand ()
 forkExpanderTask task = do
   tid <- newTaskID
   localState <- view expanderLocal
-  overIORef expanderState expanderTasks ((tid, localState, task) :)
+  overIORef expanderState expanderTasks ((tid, localState, task) :<|)
 
 forkExpandSyntax :: MacroDest -> Syntax -> Expand ()
 forkExpandSyntax dest stx =
@@ -520,7 +522,7 @@ forkExpandVar :: Ty -> SplitCorePtr -> Syntax -> Var -> Expand ()
 forkExpandVar ty expr ident var =
   forkExpanderTask $ ExpandVar ty expr ident var
 
-forkAwaitingTypeCase :: SrcLoc -> MacroDest -> Ty -> VEnv -> [(TypePattern, Core)] -> [Closure] -> Expand ()
+forkAwaitingTypeCase :: SrcLoc -> MacroDest -> Ty -> VEnv -> Seq (TypePattern, Core) -> [Closure] -> Expand ()
 forkAwaitingTypeCase loc dest ty env cases kont =
   forkExpanderTask $ AwaitingTypeCase loc dest ty env cases kont
 
@@ -544,7 +546,7 @@ forkAwaitingDefn x n b defn t dest stx =
 forkEstablishConstructors ::
   ScopeSet ->
   DeclOutputScopesPtr ->
-  Datatype -> [(Ident, Constructor, [SplitTypePtr])] ->
+  Datatype -> Seq (Ident, Constructor, Seq SplitTypePtr) ->
   Expand ()
 forkEstablishConstructors scs outScopesDest dt ctors =
   forkExpanderTask $ EstablishConstructors scs outScopesDest dt ctors
@@ -561,7 +563,7 @@ forkContinueMacroAction dest value kont = do
 trivialScheme :: Ty -> Expand SchemePtr
 trivialScheme t = do
   sch <- liftIO newSchemePtr
-  linkScheme sch (Scheme [] t)
+  linkScheme sch (Scheme Empty t)
   return sch
 
 -- | Compute the dependencies of a particular slot. The dependencies
@@ -620,8 +622,8 @@ getDecl ptr =
       return $ CompleteDecl $ Data x dn argKinds' ctors'
         where
           zonkCtor ::
-            (Ident, Constructor, [SplitTypePtr]) ->
-            Expand (Ident, Constructor, [Ty])
+            (Ident, Constructor, Seq SplitTypePtr) ->
+            Expand (Ident, Constructor, Seq Ty)
           zonkCtor (ident, cn, args) = do
             args' <- for args $
                        \ptr' ->
@@ -686,15 +688,15 @@ withLocalVarType ident x sch act = do
     addVar Nothing = Just $ Env.singleton x ident sch
     addVar (Just γ) = Just $ Env.insert x ident sch γ
 
-withLocalVarTypes :: [(Var, Ident, SchemePtr)] -> Expand a -> Expand a
+withLocalVarTypes :: Seq (Var, Ident, SchemePtr) -> Expand a -> Expand a
 withLocalVarTypes vars act = do
   ph <- currentPhase
   Expand $
     local (over (expanderLocal . expanderVarTypes . at ph) addVars) $
     runExpand act
   where
-    addVars Nothing = Just $ Env.fromList vars
-    addVars (Just γ) = Just $ γ <> Env.fromList vars
+    addVars Nothing = Just $ Env.fromList (F.toList vars)
+    addVars (Just γ) = Just $ γ <> Env.fromList (F.toList vars)
 
 saveExprType :: SplitCorePtr -> Ty -> Expand ()
 saveExprType dest t =
@@ -710,7 +712,7 @@ isExprChecked dest = do
     Just layer ->
       case view (expanderExpressionTypes . at dest) st of
         Nothing -> return False
-        Just _ -> getAll . fold <$> traverse (fmap All . isExprChecked) layer
+        Just _ -> getAll . F.fold <$> traverse (fmap All . isExprChecked) layer
 
 saveOrigin :: SplitCorePtr -> SrcLoc -> Expand ()
 saveOrigin ptr loc =
@@ -830,19 +832,19 @@ completely body = do
   clearTasks
   a <- body
   remainingTasks <- getTasks
-  unless (null remainingTasks) $ do
-    throwError (NoProgress (map (view _3) remainingTasks))
+  unless (Seq.null remainingTasks) $ do
+    throwError (NoProgress (map (view _3) (F.toList remainingTasks)))
   setTasks oldTasks
   pure a
 
-getTasks :: Expand [(TaskID, ExpanderLocal, ExpanderTask)]
+getTasks :: Expand (Seq (TaskID, ExpanderLocal, ExpanderTask))
 getTasks = view expanderTasks <$> getState
 
-setTasks :: [(TaskID, ExpanderLocal, ExpanderTask)] -> Expand ()
+setTasks :: Seq (TaskID, ExpanderLocal, ExpanderTask) -> Expand ()
 setTasks = modifyState . set expanderTasks
 
 clearTasks :: Expand ()
-clearTasks = modifyState $ set expanderTasks []
+clearTasks = modifyState $ set expanderTasks Empty
 
 expandEval :: Eval a -> Expand a
 expandEval evalAction = do

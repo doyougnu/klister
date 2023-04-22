@@ -11,6 +11,8 @@ import Control.Monad.Except
 import Control.Monad.Reader
 import Data.Text (Text)
 import qualified Data.Text as T
+import Data.Sequence (Seq(..))
+import qualified Data.Sequence as Seq
 
 import Core
 import Env
@@ -60,11 +62,11 @@ withEnv = local . const
 withExtendedEnv :: Ident -> Var -> Value -> Eval a -> Eval a
 withExtendedEnv n x v act = local (Env.insert x n v) act
 
-withManyExtendedEnv :: [(Ident, Var, Value)] -> Eval a -> Eval a
+withManyExtendedEnv :: Seq (Ident, Var, Value) -> Eval a -> Eval a
 withManyExtendedEnv exts act = local (inserter exts) act
   where
-    inserter [] = id
-    inserter ((n, x, v) : rest) = Env.insert x n v . inserter rest
+    inserter Seq.Empty = id
+    inserter ((n, x, v) Seq.:<| rest) = Env.insert x n v . inserter rest
 
 
 data EvalResult
@@ -172,14 +174,14 @@ eval (Core (CoreIdent (ScopedIdent ident scope))) = do
             , _typeErrorActual   = "list"
             }
         Id name -> withScopeOf scope $ Id name
-eval (Core (CoreEmpty (ScopedEmpty scope))) = withScopeOf scope (List [])
+eval (Core (CoreEmpty (ScopedEmpty scope))) = withScopeOf scope (List mempty)
 eval (Core (CoreCons (ScopedCons hd tl scope))) = do
   hdSyntax <- evalAsSyntax hd
   tlSyntax <- evalAsSyntax tl
   case tlSyntax of
     Syntax (Stx _ _ expr) ->
       case expr of
-        List vs -> withScopeOf scope $ List $ hdSyntax : vs
+        List vs -> withScopeOf scope $ List $ hdSyntax :<| vs
         String _ ->
           throwError $ EvalErrorType $ TypeError
             { _typeErrorExpected = "list"
@@ -270,31 +272,31 @@ withScopeOf scope expr = do
     Syntax (Stx scopeSet loc _) ->
       pure $ ValueSyntax $ Syntax $ Stx scopeSet loc expr
 
-doDataCase :: SrcLoc -> Value -> [(ConstructorPattern, Core)] -> Eval Value
-doDataCase loc v0 [] = throwError (EvalErrorCase loc v0)
-doDataCase loc v0 ((pat, rhs) : ps) =
-  match (doDataCase loc v0 ps) (eval rhs) [(unConstructorPattern pat, v0)]
+doDataCase :: SrcLoc -> Value -> Seq (ConstructorPattern, Core) -> Eval Value
+doDataCase loc v0 Seq.Empty = throwError (EvalErrorCase loc v0)
+doDataCase loc v0 ((pat, rhs) :<| ps) =
+  match (doDataCase loc v0 ps) (eval rhs) ((unConstructorPattern pat, v0) :<| Seq.Empty)
   where
     match ::
       Eval Value {- ^ Failure continuation -} ->
       Eval Value {- ^ Success continuation, to be used in an extended environment -} ->
-      [(ConstructorPatternF ConstructorPattern, Value)] {- ^ Subpatterns and their scrutinees -} ->
+      Seq (ConstructorPatternF ConstructorPattern, Value) {- ^ Subpatterns and their scrutinees -} ->
       Eval Value
-    match _fk sk [] = sk
-    match fk sk ((CtorPattern ctor subPats, tgt) : more) =
+    match _fk sk Seq.Empty = sk
+    match fk sk ((CtorPattern ctor subPats, tgt) :<| more) =
       case tgt of
         ValueCtor c args
           | c == ctor ->
             if length subPats /= length args
               then error $ "Type checker bug: wrong number of pattern vars for constructor " ++ show c
-              else match fk sk (zip (map unConstructorPattern subPats) args ++ more)
+              else match fk sk (Seq.zip (fmap unConstructorPattern subPats) args <> more)
         _otherValue -> fk
-    match fk sk ((PatternVar n x, tgt) : more) =
-      match fk (withExtendedEnv n x tgt $ sk) more
+    match fk sk ((PatternVar n x, tgt) :<| more) =
+      match fk (withExtendedEnv n x tgt sk) more
 
-doTypeCase :: SrcLoc -> Ty -> [(TypePattern, Core)] -> Eval Value
-doTypeCase blameLoc v0 [] = throwError (EvalErrorCase blameLoc (ValueType v0))
-doTypeCase blameLoc (Ty v0) ((p, rhs0) : ps) = match (doTypeCase blameLoc (Ty v0) ps) p rhs0 v0
+doTypeCase :: SrcLoc -> Ty -> Seq (TypePattern, Core) -> Eval Value
+doTypeCase blameLoc v0 Seq.Empty = throwError (EvalErrorCase blameLoc (ValueType v0))
+doTypeCase blameLoc (Ty v0) ((p, rhs0) :<| ps) = match (doTypeCase blameLoc (Ty v0) ps) p rhs0 v0
   where
     match :: Eval Value -> TypePattern -> Core -> TyF Ty -> Eval Value
     match next (TypePattern t) rhs scrut =
@@ -306,18 +308,15 @@ doTypeCase blameLoc (Ty v0) ((p, rhs0) : ps) = match (doTypeCase blameLoc (Ty v0
         (_, TyF (TMetaVar _) _) -> next
 
         (TyF ctor1 args1, TyF ctor2 args2)
-          | ctor1 == ctor2 && length args1 == length args2 ->
-            withManyExtendedEnv [ (n, x, ValueType arg)
-                                | (n, x) <- args1
-                                | arg <- args2]
-                                (eval rhs)
+          | ctor1 == ctor2 && Seq.length args1 == Seq.length args2 ->
+            withManyExtendedEnv (Seq.zipWith (\(n,x) arg -> (n,x,ValueType arg)) args1 args2) (eval rhs)
         (_, _) -> next
     match _next (AnyType n x) rhs scrut =
       withExtendedEnv n x (ValueType (Ty scrut)) (eval rhs)
 
-doCase :: SrcLoc -> Value -> [(SyntaxPattern, Core)] -> Eval Value
-doCase blameLoc v0 []               = throwError (EvalErrorCase blameLoc v0)
-doCase blameLoc v0 ((p, rhs0) : ps) = match (doCase blameLoc v0 ps) p rhs0 v0
+doCase :: SrcLoc -> Value -> Seq (SyntaxPattern, Core) -> Eval Value
+doCase blameLoc v0 Seq.Empty          = throwError (EvalErrorCase blameLoc v0)
+doCase blameLoc v0 ((p, rhs0) :<| ps) = match (doCase blameLoc v0 ps) p rhs0 v0
   where
     match next (SyntaxPatternIdentifier n x) rhs =
       \case
@@ -336,12 +335,12 @@ doCase blameLoc v0 ((p, rhs0) : ps) = match (doCase blameLoc v0 ps) p rhs0 v0
         _ -> next
     match next SyntaxPatternEmpty rhs =
       \case
-        (ValueSyntax (Syntax (Stx _ _ (List [])))) ->
+        (ValueSyntax (Syntax (Stx _ _ (List Seq.Empty)))) ->
           eval rhs
         _ -> next
     match next (SyntaxPatternCons nx x nxs xs) rhs =
       \case
-        (ValueSyntax (Syntax (Stx scs loc (List (v:vs))))) ->
+        (ValueSyntax (Syntax (Stx scs loc (List (v :<| vs))))) ->
           withExtendedEnv nx x (ValueSyntax v) $
           withExtendedEnv nxs xs (ValueSyntax (Syntax (Stx scs loc (List vs)))) $
           eval rhs
@@ -349,11 +348,11 @@ doCase blameLoc v0 ((p, rhs0) : ps) = match (doCase blameLoc v0 ps) p rhs0 v0
     match next (SyntaxPatternList xs) rhs =
       \case
         (ValueSyntax (Syntax (Stx _ _ (List vs))))
-          | length vs == length xs ->
-            withManyExtendedEnv [(n, x, (ValueSyntax v))
-                                | (n,x) <- xs
-                                | v <- vs] $
-            eval rhs
+          | Seq.length vs == Seq.length xs ->
+            withManyExtendedEnv
+            (Seq.zipWith (\(n,x) v -> (n, x, ValueSyntax v)) xs vs)
+            $ eval rhs
+
         _ -> next
     match _next SyntaxPatternAny rhs =
       const (eval rhs)

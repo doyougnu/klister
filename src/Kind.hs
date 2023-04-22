@@ -10,6 +10,7 @@ module Kind (Kind(..), KindVar, newKindVar, kFun, KindStore) where
 
 import Control.Lens
 import Data.Data (Data)
+import Data.Sequence (Seq)
 
 import Unique
 
@@ -36,7 +37,7 @@ newKindVar :: IO KindVar
 newKindVar = KindVar <$> newUnique
 
 
-kFun :: [Kind] -> Kind -> Kind
+kFun :: Seq Kind -> Kind -> Kind
 kFun args result = foldr KFun result args
 
 newtype KindStore = KindStore (Store KindVar Kind)

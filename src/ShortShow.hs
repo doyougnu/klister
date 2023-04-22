@@ -2,6 +2,8 @@ module ShortShow where
 
 import Data.Text
 import qualified Data.List as List
+import qualified Data.Sequence as Seq
+import Data.Foldable
 
 import Unique
 
@@ -36,4 +38,10 @@ instance ShortShow a => ShortShow [a] where
   shortShow xs
     = "["
    ++ List.intercalate ", " (fmap shortShow xs)
+   ++ "]"
+
+instance ShortShow a => ShortShow (Seq.Seq a) where
+  shortShow xs
+    = "["
+   ++ List.intercalate ", " (toList $ fmap shortShow xs)
    ++ "]"

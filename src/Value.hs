@@ -4,8 +4,10 @@ module Value where
 
 import Control.Lens
 import Data.Text (Text)
+import Data.Sequence (Seq)
 import qualified Data.Text as T
 import System.IO (Handle)
+import qualified Data.Foldable as F
 
 import Core
 import Datatype
@@ -26,7 +28,7 @@ data MacroAction
   | MacroActionLog Syntax
   | MacroActionIntroducer
   | MacroActionWhichProblem
-  | MacroActionTypeCase VEnv SrcLoc Ty [(TypePattern, Core)]
+  | MacroActionTypeCase VEnv SrcLoc Ty (Seq (TypePattern, Core))
 
 instance Show MacroAction where
   show _ = "MacroAction..."
@@ -39,14 +41,14 @@ data Value
   | ValueIOAction (IO Value)
   | ValueOutputPort Handle
   | ValueInteger Integer
-  | ValueCtor Constructor [Value]
+  | ValueCtor Constructor (Seq Value)
   | ValueType Ty
   | ValueString Text
 
 instance Show Value where
   show _ = "Value..."
 
-primitiveCtor :: Text -> [Value] -> Value
+primitiveCtor :: Text -> Seq Value -> Value
 primitiveCtor name args =
   let ctor = Constructor (KernelName kernelName) (ConstructorName name)
   in ValueCtor ctor args
@@ -60,7 +62,7 @@ valueText (ValueOutputPort _) = "#<ouptut port>"
 valueText (ValueInteger s) = "#!" <> T.pack (show s)
 valueText (ValueCtor c args) =
   "(" <> view (constructorName . constructorNameText) c <> " " <>
-  T.intercalate " " (map valueText args) <> ")"
+  T.intercalate " " (map valueText (F.toList args)) <> ")"
 valueText (ValueType ptr) = "#t<" <> T.pack (show ptr) <> ">"
 valueText (ValueString str) = T.pack (show str)
 

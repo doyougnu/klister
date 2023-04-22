@@ -39,7 +39,7 @@ module Expander (
   ) where
 
 import Control.Applicative
-import Control.Lens hiding (List, children)
+import Control.Lens hiding (List, children, Empty)
 import Control.Monad.Except
 import Control.Monad.Reader
 import Control.Monad.State.Strict
@@ -48,6 +48,7 @@ import Data.List (nub)
 import qualified Data.HashMap.Strict as HM
 import Data.Maybe
 import qualified Data.Set as Set
+import qualified Data.IntSet as ISet
 import Data.Sequence (Seq(..))
 import qualified Data.Sequence as Seq
 import Data.Text (Text)
@@ -85,6 +86,7 @@ import World
 import qualified ScopeSet
 
 import qualified Util.Store as S
+import Util.Key
 
 expandExpr :: Syntax -> Expand SplitCore
 expandExpr stx = do
@@ -180,7 +182,7 @@ getExports (ExportRenamed spec rens) = mapExportNames rename <$> getExports spec
     rename x =
       case lookup x rens of
         Nothing -> x
-        Just y -> y
+        Just y  -> y
 getExports (ExportPrefixed spec pref) = mapExportNames (pref <>) <$> getExports spec
 getExports (ExportShifted spec i) = do
   p <- currentPhase
@@ -197,17 +199,17 @@ getImports (ImportOnly spec idents) = do
     case getExport p (view stxValue x) imports of
       Nothing -> throwError $ NotExported x p
       Just _ -> pure ()
-  return $ filterExports (\_ x -> x `elem` (map (view stxValue) idents)) imports
+  return $ filterExports (\_ x -> x `elem` fmap (view stxValue) idents) imports
 getImports (ShiftImports spec i) = do
   p <- currentPhase
   inPhase (shift i p) $ getImports spec
-getImports (RenameImports spec (map (bimap (view stxValue) (view stxValue)) -> rens)) =
+getImports (RenameImports spec (fmap (bimap (view stxValue) (view stxValue)) -> rens)) =
   mapExportNames rename <$> getImports spec
   where
     rename x =
       case lookup x rens of
         Nothing -> x
-        Just y -> y
+        Just y  -> y
 getImports (PrefixImports spec pref) =
   mapExportNames (pref <>) <$> getImports spec
 
@@ -293,7 +295,7 @@ evalMod (Expanded em _) = execStateT (traverseOf_ (moduleBody . each) evalDecl e
             over (expanderWorld . worldDatatypes . at p . non mempty) $
             HM.insert dt $ DatatypeInfo
               { _datatypeArgKinds     = argKinds
-              , _datatypeConstructors = [c | (_, c, _) <- ctors ]
+              , _datatypeConstructors = (fmap (view _2) ctors)
               }
 
         Example loc sch expr -> do
@@ -397,9 +399,9 @@ initializeKernel outputChannel = do
       [ ("Syntax", Prims.baseType TSyntax)
       , ("String", Prims.baseType TString)
       , ("Integer", Prims.baseType TInteger)
-      , ("->", Prims.typeConstructor TFun [KStar, KStar])
-      , ("Macro", Prims.typeConstructor TMacro [KStar])
-      , ("IO", Prims.typeConstructor TIO [KStar])
+      , ("->", Prims.typeConstructor TFun (KStar :<| KStar :<| Empty))
+      , ("Macro", Prims.typeConstructor TMacro (Seq.singleton KStar))
+      , ("IO", Prims.typeConstructor TIO (Seq.singleton KStar))
       , ("Output-Port", Prims.baseType TOutputPort)
       , ("Type", Prims.baseType TType)
       ]
@@ -407,40 +409,40 @@ initializeKernel outputChannel = do
     funPrims :: [(Text, Scheme Ty, Value)]
     funPrims =
       [ ( "open-syntax"
-        , Scheme [] $ tFun [tSyntax] (Prims.primitiveDatatype "Syntax-Contents" [tSyntax])
+        , Scheme Empty $ tFun [tSyntax] (Prims.primitiveDatatype "Syntax-Contents" (Seq.singleton tSyntax))
         , ValueClosure $ HO $
           \(ValueSyntax stx) ->
             case syntaxE stx of
               Id name ->
-                primitiveCtor "identifier-contents" [ValueString name]
+                primitiveCtor "identifier-contents" (Seq.singleton $ ValueString name)
               String str ->
-                primitiveCtor "string-contents" [ValueString str]
+                primitiveCtor "string-contents" (Seq.singleton $ ValueString str)
               Integer i ->
-                primitiveCtor "integer-contents" [ValueInteger i]
+                primitiveCtor "integer-contents" (Seq.singleton $ ValueInteger i)
               List xs ->
-                primitiveCtor "list-contents" [foldr consVal nilVal xs]
+                primitiveCtor "list-contents" (Seq.singleton $ foldr consVal nilVal xs)
                 where
-                  nilVal = primitiveCtor "nil" []
-                  consVal x v = primitiveCtor "::" [ValueSyntax x, v]
+                  nilVal = primitiveCtor "nil" Empty
+                  consVal x v = primitiveCtor "::" (ValueSyntax x :<| v :<| Empty)
         )
       , ( "close-syntax"
-        , Scheme [] $
-          tFun [tSyntax, tSyntax, Prims.primitiveDatatype "Syntax-Contents" [tSyntax]] tSyntax
+        , Scheme mempty $
+          tFun [tSyntax, tSyntax, Prims.primitiveDatatype "Syntax-Contents" (Seq.singleton tSyntax)] tSyntax
         , ValueClosure $ HO $
           \(ValueSyntax locStx) ->
             ValueClosure $ HO $
             \(ValueSyntax scopesStx) ->
               ValueClosure $ HO $
               -- N.B. Assuming correct constructors
-              \(ValueCtor ctor [arg]) ->
+              \(ValueCtor ctor (arg :<| Empty)) ->
                 let close x = Syntax $ Stx (view (unSyntax . stxScopeSet) scopesStx) (stxLoc locStx) x
                     unList =
                       \case
-                        (ValueCtor c [])
+                        (ValueCtor c Empty)
                           | view (constructorName . constructorNameText) c == "nil" ->
-                            []
-                        (ValueCtor c [ValueSyntax x, xs])
-                          | view (constructorName . constructorNameText) c == "::" -> x : unList xs
+                            mempty
+                        (ValueCtor c (ValueSyntax x :<| xs :<| Empty))
+                          | view (constructorName . constructorNameText) c == "::" -> x :<| unList xs
                         _ ->
                           error "impossible: List value must be nil or ::"
                 in
@@ -459,17 +461,17 @@ initializeKernel outputChannel = do
         )
       ] ++
       [ ( "string=?"
-        , Scheme [] $ tFun [tString, tString] (Prims.primitiveDatatype "Bool" [])
+        , Scheme mempty $ tFun [tString, tString] (Prims.primitiveDatatype "Bool" mempty)
         , ValueClosure $ HO $
           \(ValueString str1) ->
             ValueClosure $ HO $
             \(ValueString str2) ->
               if str1 == str2
-                then primitiveCtor "true" []
-                else primitiveCtor "false" []
+                then primitiveCtor "true"  mempty
+                else primitiveCtor "false" mempty
         )
       , ( "string-append"
-        , Scheme [] $ tFun [tString, tString] tString
+        , Scheme mempty $ tFun [tString, tString] tString
         , ValueClosure $ HO $
           \(ValueString str1) ->
             ValueClosure $ HO $
@@ -477,81 +479,81 @@ initializeKernel outputChannel = do
               ValueString (str1 <> str2)
         )
       , ( "integer->string"
-        , Scheme [] $ tFun [tInteger] tString
+        , Scheme mempty $ tFun [tInteger] tString
         , ValueClosure $ HO $
           \(ValueInteger int) ->
             ValueString (T.pack (show int))
         )
       , ( "substring"
-        , Scheme [] $
-          tFun [tInteger, tInteger, tString] (Prims.primitiveDatatype "Maybe" [tString])
+        , Scheme mempty $
+          tFun [tInteger, tInteger, tString] (Prims.primitiveDatatype "Maybe" (Seq.singleton tString))
         , ValueClosure $ HO $
           \(ValueInteger (fromInteger -> start)) ->
             ValueClosure $ HO $
             \(ValueInteger (fromInteger -> len)) ->
               ValueClosure $ HO $
               \(ValueString str) ->
-                if | start < 0 || start       >= T.length str -> primitiveCtor "nothing" []
-                   | len   < 0 || start + len >  T.length str -> primitiveCtor "nothing" []
+                if | start < 0 || start       >= T.length str -> primitiveCtor "nothing" mempty
+                   | len   < 0 || start + len >  T.length str -> primitiveCtor "nothing" mempty
                    | otherwise ->
-                     primitiveCtor "just" [ValueString $ T.take len $ T.drop start str]
+                     primitiveCtor "just" (Seq.singleton $ ValueString $ T.take len $ T.drop start str)
         )
       , ( "string-length"
-        , Scheme [] $ tFun [tString] tInteger
+        , Scheme mempty $ tFun [tString] tInteger
         , ValueClosure $ HO $ \(ValueString str) -> ValueInteger $ toInteger $ T.length str
         )
       , ( "string-downcase"
-        , Scheme [] $ tFun [tString] tString
+        , Scheme mempty $ tFun [tString] tString
         , ValueClosure $ HO $ \(ValueString str) -> ValueString $ T.toLower str
         )
       , ( "string-upcase"
-        , Scheme [] $ tFun [tString] tString
+        , Scheme mempty $ tFun [tString] tString
         , ValueClosure $ HO $ \(ValueString str) -> ValueString $ T.toUpper str
         )
       , ( "string-titlecase"
-        , Scheme [] $ tFun [tString] tString
+        , Scheme mempty $ tFun [tString] tString
         , ValueClosure $ HO $ \(ValueString str) -> ValueString $ T.toTitle str
         )
       , ( "string-foldcase"
-        , Scheme [] $ tFun [tString] tString
+        , Scheme mempty $ tFun [tString] tString
         , ValueClosure $ HO $ \(ValueString str) -> ValueString $ T.toCaseFold str
         )
       ] ++
       [ ( "string" <> name <> "?"
-        , Scheme [] $ tFun [tString, tString] (Prims.primitiveDatatype "Bool" [])
+        , Scheme mempty $ tFun [tString, tString] (Prims.primitiveDatatype "Bool" mempty)
         , Prims.binaryStringPred fun
         )
       | (name, fun) <- [("<", (<)), ("<=", (<=)), (">", (>)), (">=", (>=)), ("=", (==)), ("/=", (/=))]
       ] ++
       [
         ( name
-        , Scheme [] $ tFun [tInteger] tInteger
+        , Scheme mempty $ tFun [tInteger] tInteger
         , Prims.unaryIntegerPrim fun
         )
       | (name, fun) <- [("abs", abs), ("negate", negate)]
       ] ++
       [ ( name
-        , Scheme [] $ tFun [tInteger, tInteger] tInteger
+        , Scheme mempty $ tFun [tInteger, tInteger] tInteger
         , Prims.binaryIntegerPrim fun
         )
       | (name, fun) <- [("+", (+)), ("-", (-)), ("*", (*)), ("/", div)]
       ] ++
       [ ( name
-        , Scheme [] $ tFun [tInteger, tInteger] (Prims.primitiveDatatype "Bool" [])
+        , Scheme mempty $ tFun [tInteger, tInteger] (Prims.primitiveDatatype "Bool" mempty)
         , Prims.binaryIntegerPred fun
         )
       | (name, fun) <- [("<", (<)), ("<=", (<=)), (">", (>)), (">=", (>=)), ("=", (==)), ("/=", (/=))]
       ] ++
       [ ("pure-IO"
-        , Scheme [KStar, KStar] $ tFun [tSchemaVar 0 []] (tIO (tSchemaVar 0 []))
+        , Scheme (KStar :<| KStar :<| Empty) $ tFun [tSchemaVar 0 mempty] (tIO (tSchemaVar 0 mempty))
         , ValueClosure $ HO $ \v -> ValueIOAction (pure v)
         )
       , ("bind-IO"
-        , Scheme [KStar, KStar] $
-          tFun [ tIO (tSchemaVar 0 [])
-               , tFun [tSchemaVar 0 []] (tIO (tSchemaVar 1 []))
+        , Scheme (KStar :<| KStar :<| Empty) $
+          tFun [ tIO (tSchemaVar 0 mempty)
+               , tFun [tSchemaVar 0 mempty] (tIO (tSchemaVar 1 mempty))
                ]
-               (tIO (tSchemaVar 1 []))
+               (tIO (tSchemaVar 1 mempty))
         , ValueClosure $ HO $ \(ValueIOAction mx) -> do
             ValueClosure $ HO $ \(ValueClosure f) -> do
               ValueIOAction $ do
@@ -574,40 +576,41 @@ initializeKernel outputChannel = do
                 my
         )
       , ( "stdout"
-        , Scheme [] $ tOutputPort
+        , Scheme mempty $ tOutputPort
         , ValueOutputPort outputChannel
         )
       , ( "write"
-        , Scheme [] $ tFun [tOutputPort, tString] (tIO (Prims.primitiveDatatype "Unit" []))
+        , Scheme mempty $ tFun [tOutputPort, tString] (tIO (Prims.primitiveDatatype "Unit" mempty))
         , ValueClosure $ HO $
           \(ValueOutputPort h) ->
             ValueClosure $ HO $
             \(ValueString str) ->
               ValueIOAction $ do
                 T.hPutStr h str
-                pure (primitiveCtor "unit" [])
+                pure (primitiveCtor "unit" mempty)
         )
       ]
 
-    datatypePrims :: [(Text, [Kind], [(Text, [Ty])])]
+    datatypePrims :: [(Text, Seq Kind, Seq (Text, Seq Ty))]
     datatypePrims =
-      [ ("ScopeAction", [], [("flip", []), ("add", []), ("remove", [])])
-      , ("Unit", [], [("unit", [])])
-      , ("Bool", [], [("true", []), ("false", [])])
-      , ("Problem", [], [("module", []), ("declaration", []), ("type", []), ("expression", [tType]), ("pattern", []), ("type-pattern", [])])
-      , ("Maybe", [KStar], [("nothing", []), ("just", [tSchemaVar 0 []])])
+      [ ("ScopeAction", Empty, Seq.fromList [("flip", Empty), ("add", Empty), ("remove", Empty)])
+      , ("Unit", Empty, Seq.fromList [("unit", Empty)])
+      , ("Bool", Empty, Seq.fromList [("true", Empty), ("false", Empty)])
+      , ("Problem", Empty, Seq.fromList [("module", Empty), ("declaration", Empty), ("type", Empty), ("expression", pure tType), ("pattern", Empty), ("type-pattern", Empty)])
+      , ("Maybe", pure KStar, Seq.fromList [("nothing", Empty), ("just", Seq.singleton $ tSchemaVar 0 mempty)])
       , ("List"
-        , [KStar]
-        , [ ("nil", [])
-          , ("::", [tSchemaVar 0 [], Prims.primitiveDatatype "List" [tSchemaVar 0 []]])
+        , pure KStar
+        , Seq.fromList [ ("nil", Empty)
+          , ("::", Seq.fromList $ [tSchemaVar 0 mempty, Prims.primitiveDatatype "List" (Seq.singleton $ tSchemaVar 0 mempty)])
           ]
         )
       , ("Syntax-Contents"
-        , [KStar]
-        , [ ("list-contents", [Prims.primitiveDatatype "List" [tSchemaVar 0 []]])
-          , ("integer-contents", [tInteger])
-          , ("string-contents", [tString])
-          , ("identifier-contents", [tString])
+        , pure KStar
+        , Seq.fromList $
+          [ ("list-contents", Seq.fromList [Prims.primitiveDatatype "List" (Seq.singleton $ tSchemaVar 0 mempty)])
+          , ("integer-contents", pure tInteger)
+          , ("string-contents", pure tString)
+          , ("identifier-contents", pure tString)
           -- if you add a constructor here, remember to also add a
           -- corresponding pattern in close-syntax!
           ]
@@ -682,7 +685,7 @@ initializeKernel outputChannel = do
       where
         kernelLoc = SrcLoc "<kernel>" (SrcPos 0 0) (SrcPos 0 0)
 
-    addDatatypePrimitive :: (Text, [Kind], [(Text, [Ty])]) -> Expand ()
+    addDatatypePrimitive :: (Text, Seq Kind, Seq (Text, Seq Ty)) -> Expand ()
     addDatatypePrimitive (name, argKinds, ctors) = do
       let dn = DatatypeName name
       let dt = Datatype
@@ -784,16 +787,16 @@ primImportModule dest outScopesDest importStx = do
   where
     importSpec :: Syntax -> Expand ImportSpec
     importSpec stx@(Syntax (Stx _ _ (List elts)))
-      | (Syntax (Stx _ _ (Id "only")) : spec : names) <- elts = do
+      | (Syntax (Stx _ _ (Id "only")) :<| spec :<| names) <- elts = do
           subSpec <- importSpec spec
           ImportOnly subSpec <$> traverse mustBeIdent names
-      | (Syntax (Stx _ _ (Id "rename")) : spec : renamings) <- elts = do
+      | (Syntax (Stx _ _ (Id "rename")) :<| spec :<| renamings) <- elts = do
           subSpec <- importSpec spec
-          RenameImports subSpec <$> traverse getRename renamings
-      | [Syntax (Stx _ _ (Id "shift")), spec, Syntax (Stx _ _ (Integer i))] <- elts = do
+          RenameImports subSpec . toList <$> traverse getRename renamings
+      | (Syntax (Stx _ _ (Id "shift")) :<| spec :<| Syntax (Stx _ _ (Integer i)) :<| Empty) <- elts = do
           subSpec <- importSpec spec
           return $ ShiftImports subSpec (fromIntegral i)
-      | [Syntax (Stx _ _ (Id "prefix")), spec, prefix] <- elts = do
+      | (Syntax (Stx _ _ (Id "prefix")) :<| spec :<| prefix :<| Empty) <- elts = do
         subSpec <- importSpec spec
         Stx _ _ p <- mustBeIdent prefix
         return $ PrefixImports subSpec p
@@ -814,26 +817,26 @@ primExport dest outScopesDest stx = do
   linkOneDecl dest (Export exported)
   linkDeclOutputScopes outScopesDest mempty
   where
-    exportSpec :: Syntax -> [Syntax] -> Expand ExportSpec
+    exportSpec :: Syntax -> Seq Syntax -> Expand ExportSpec
     exportSpec blame elts
-      | [Syntax (Stx scs' srcloc'  (List ((getIdent -> Just (Stx _ _ kw)) : args)))] <- elts =
+      | Syntax (Stx scs' srcloc'  (List ((getIdent -> Just (Stx _ _ kw)) :<| args))) :<| Empty <- elts =
           case kw of
             "rename" ->
               case args of
-                (rens : more) -> do
-                  pairs <- getRenames blame rens
+                (rens :<| more) -> do
+                  pairs <- toList <$> getRenames blame rens
                   spec <- exportSpec blame more
                   return $ ExportRenamed spec pairs
                 _ -> throwError $ NotExportSpec blame
             "prefix" ->
               case args of
-                ((syntaxE -> String pref) : more) -> do
+                ((syntaxE -> String pref) :<| more) -> do
                   spec <- exportSpec blame more
                   return $ ExportPrefixed spec pref
                 _ -> throwError $ NotExportSpec blame
             "shift" ->
               case args of
-                (Syntax (Stx _ _ (Integer i)) : more) -> do
+                (Syntax (Stx _ _ (Integer i)) :<| more) -> do
                   spec <- exportSpec (Syntax (Stx scs' srcloc' (List more))) more
                   if i >= 0
                     then return $ ExportShifted spec (fromIntegral i)
@@ -857,7 +860,7 @@ primExport dest outScopesDest stx = do
 
 identifierHeaded :: Syntax -> Maybe Ident
 identifierHeaded (Syntax (Stx scs srcloc (Id x))) = Just (Stx scs srcloc x)
-identifierHeaded (Syntax (Stx _ _ (List (h:_))))
+identifierHeaded (Syntax (Stx _ _ (List (h :<| _))))
   | (Syntax (Stx scs srcloc (Id x))) <- h = Just (Stx scs srcloc x)
 identifierHeaded _ = Nothing
 
@@ -865,7 +868,7 @@ expandTasks :: Expand ()
 expandTasks = do
   tasks <- getTasks
   case tasks of
-    [] -> return ()
+    Empty -> return ()
     more -> do
       clearTasks
       forM_ more runTask
@@ -874,7 +877,7 @@ expandTasks = do
         then return ()
         else expandTasks
   where
-    taskIDs = Set.fromList . map (view _1)
+    taskIDs = ISet.fromList . toList . fmap (getKey . view _1)
 
 
 runTask :: (TaskID, ExpanderLocal, ExpanderTask) -> Expand ()
@@ -1048,19 +1051,13 @@ runTask (tid, localData, task) = withLocal localData $ do
                   Nothing ->
                     throwError $ InternalError "Pattern info not added"
                   Just (Right found) ->
-                    pure [found]
+                    pure (Seq.singleton found)
                   Just (Left ptrs) ->
-                    concat <$> traverse getVarInfo ptrs
+                    mconcat <$> traverse getVarInfo ptrs
           vars <- getVarInfo patPtr
           p <- currentPhase
-          let rhs' = foldr (addScope p) stx
-                       [ sc'
-                       | (sc', _, _, _) <- vars
-                       ]
-          withLocalVarTypes
-            [ (var, varStx, t)
-            | (_sc, varStx, var, t) <- vars
-            ] $
+          let rhs' = foldr (addScope p) stx (fmap (view _1) vars)
+          withLocalVarTypes (fmap (\(_,varStx,var,t) -> (var,varStx,t)) vars) $
             expandOneExpression ty dest rhs'
     AwaitingTypePattern patPtr ty dest stx -> do
       ready <- has (expanderCompletedTypePatterns . ix patPtr) <$> getState
@@ -1072,26 +1069,20 @@ runTask (tid, localData, task) = withLocal localData $ do
             Nothing -> throwError $ InternalError "Type pattern info not added"
             Just vars -> do
               p <- currentPhase
-              let rhs' = foldr (addScope p) stx
-                           [ sc'
-                           | (sc', _, _, _) <- vars
-                           ]
-              withLocalVarTypes
-                [ (var, varStx, t)
-                | (_sc, varStx, var, t) <- vars
-                ] $
-                expandOneExpression ty dest rhs'
+              let rhs' = foldr (addScope p) stx (fmap (view _1) vars)
+              withLocalVarTypes (fmap (\(_,varStx,var,t) -> (var,varStx,t)) vars)
+                $ expandOneExpression ty dest rhs'
 
   where
     laterMacro tid' b v x dest deps mdest stx = do
       localConfig <- view expanderLocal
       modifyState $
         over expanderTasks $
-          ((tid', localConfig, AwaitingMacro dest (TaskAwaitMacro b v x deps mdest stx)) :)
+          ((tid', localConfig, AwaitingMacro dest (TaskAwaitMacro b v x deps mdest stx)) :<|)
 
     addConstructor ::
       Ident -> Datatype ->
-      Constructor -> [Ty] ->
+      Constructor -> Seq Ty ->
       Expand ()
     addConstructor name dt ctor args = do
       name' <- addRootScope' name
@@ -1134,9 +1125,9 @@ expandOneTypePattern dest stx =
 
 -- | Insert a function application marker with a lexical context from
 -- the original expression
-addApp :: Syntax -> [Syntax] -> Syntax
+addApp :: Syntax -> Seq Syntax -> Syntax
 addApp (Syntax (Stx scs loc _)) args =
-  Syntax (Stx scs loc (List (app : args)))
+  Syntax (Stx scs loc (List (app :<| args)))
   where
     app = Syntax (Stx scs loc (Id "#%app"))
 
@@ -1144,7 +1135,7 @@ addApp (Syntax (Stx scs loc _)) args =
 -- the original expression
 addIntegerLiteral :: Syntax -> Integer -> Syntax
 addIntegerLiteral (Syntax (Stx scs loc _)) n =
-  Syntax (Stx scs loc (List [integerLiteral, n']))
+  Syntax (Stx scs loc (List (integerLiteral :<| n' :<| Empty)))
   where
     integerLiteral = Syntax (Stx scs loc (Id "#%integer-literal"))
     n' = Syntax (Stx scs loc (Integer n))
@@ -1153,7 +1144,7 @@ addIntegerLiteral (Syntax (Stx scs loc _)) n =
 -- the original expression
 addStringLiteral :: Syntax -> Text -> Syntax
 addStringLiteral (Syntax (Stx scs loc _)) s =
-  Syntax (Stx scs loc (List [stringLiteral, s']))
+  Syntax (Stx scs loc (List (stringLiteral :<| s' :<| Empty)))
   where
     stringLiteral = Syntax (Stx scs loc (Id "#%string-literal"))
     s' = Syntax (Stx scs loc (String s))
@@ -1218,7 +1209,7 @@ expandOneForm prob stx
                 if length foundArgs /= length args'
                   then throwError $
                        WrongArgCount stx ctor (length args') (length foundArgs)
-                  else for (zip args' foundArgs) (uncurry schedule)
+                  else for (Seq.zip args' foundArgs) (uncurry schedule)
               linkExpr dest (CoreCtor ctor argDests)
               saveExprType dest t
             PatternDest patTy dest -> do
@@ -1227,15 +1218,15 @@ expandOneForm prob stx
               argTypes <- for args \ a ->
                             inst loc (Scheme argKinds a) tyArgs
               unify loc (tDatatype dt tyArgs) patTy
-              if length subPats /= length argTypes
-                then throwError $ WrongArgCount stx ctor (length argTypes) (length subPats)
+              if Seq.length subPats /= Seq.length argTypes
+                then throwError $ WrongArgCount stx ctor (Seq.length argTypes) (Seq.length subPats)
                 else do
-                  subPtrs <- for (zip subPats argTypes) \(sp, t) -> do
+                  subPtrs <- for (Seq.zip subPats argTypes) \(sp, t) -> do
                     ptr <- liftIO newPatternPtr
                     let subPatDest = PatternDest t ptr
                     forkExpandSyntax subPatDest sp
                     pure ptr
-                  modifyState $ set (expanderPatternBinders . at dest) $ Just $ Left subPtrs
+                  modifyState $ set (expanderPatternBinders . at dest) $ Just $ Left $ toList subPtrs
                   linkPattern dest $
                     CtorPattern ctor subPtrs
             other ->
@@ -1276,17 +1267,17 @@ expandOneForm prob stx
         ETypeVar k i -> do
           (k', dest) <- requireTypeCat stx prob
           case syntaxE stx of
-            List (vStx@(syntaxE -> Id _) : arg : args) -> do
-              kindedArgs <- for (arg : args) $
+            List (vStx@(syntaxE -> Id _) :<| arg :<| args) -> do
+              kindedArgs <- for (arg :<| args) $
                             \a -> do
                               newKind <- KMetaVar <$> liftIO newKindVar
                               pure (newKind, a)
-              equateKinds vStx k $ kFun (map fst kindedArgs) k'
+              equateKinds vStx k $ kFun (fmap fst kindedArgs) k'
               argDests <- traverse (uncurry scheduleType) kindedArgs
               linkType dest $ tSchemaVar i argDests
             Id _ -> do
               equateKinds stx k k'
-              linkType dest $ tSchemaVar i []
+              linkType dest $ tSchemaVar i Seq.Empty
             _ -> throwError $ NotValidType stx
 
         EIncompleteDefn x n d -> do
@@ -1359,10 +1350,10 @@ expandDeclForm dest outScopesDest stx =
 -- this call. We must merge those with the scopes which will be introduced by
 -- the declarations in the rest of the Syntax.
 expandDeclForms :: DeclTreePtr -> ScopeSet -> DeclOutputScopesPtr -> Syntax -> Expand ()
-expandDeclForms dest scs outScopesDest (Syntax (Stx _ _ (List []))) = do
+expandDeclForms dest scs outScopesDest (Syntax (Stx _ _ (List Seq.Empty))) = do
   linkDeclTree dest DeclTreeLeaf
   linkDeclOutputScopes outScopesDest scs
-expandDeclForms dest scs outScopesDest (Syntax (Stx stxScs loc (List (d:ds)))) = do
+expandDeclForms dest scs outScopesDest (Syntax (Stx stxScs loc (List (d :<| ds)))) = do
   headDest <- newDeclTreePtr
   tailDest <- newDeclTreePtr
   headValidityPtr <- newDeclOutputScopesPtr
@@ -1379,7 +1370,7 @@ expandDeclForms _dest _scs _outScopesDest _stx =
 
 
 data MacroOutput
-  = StuckOnType SrcLoc Ty VEnv [(TypePattern, Core)] [Closure]
+  = StuckOnType SrcLoc Ty VEnv (Seq (TypePattern, Core)) [Closure]
   | Done Value
 
 -- If we're stuck waiting on type information, we return a continuation in the
@@ -1417,13 +1408,13 @@ interpretMacroAction prob =
             \case
               -- Ambiguous bindings should not crash the comparison -
               -- they're just not free-identifier=?.
-              Ambiguous _ _ _ -> return $ Done $ primitiveCtor "false" []
+              Ambiguous _ _ _ -> return $ Done $ primitiveCtor "false" Empty
               -- Similarly, things that are not yet bound are just not
               -- free-identifier=?
-              Unknown _ -> return $ Done $ primitiveCtor "false" []
+              Unknown _ -> return $ Done $ primitiveCtor "false" Empty
               e -> throwError e
         Bound ->
-          return $ Done $ flip primitiveCtor [] $
+          return $ Done $ flip primitiveCtor Empty $
             if view stxValue id1 == view stxValue id2 &&
                view stxScopeSet id1 == view stxScopeSet id2
               then "true" else "false"
@@ -1434,7 +1425,7 @@ interpretMacroAction prob =
           b1 <- resolve id1
           b2 <- resolve id2
           return $ Done $
-            flip primitiveCtor [] $
+            flip primitiveCtor Empty $
             if b1 == b2 then "true" else "false"
         opName =
           case how of
@@ -1442,11 +1433,11 @@ interpretMacroAction prob =
             Bound -> "bound-identifier=?"
     MacroActionLog stx -> do
       liftIO $ prettyPrint stx >> putStrLn ""
-      pure $ Done $ primitiveCtor "unit" []
+      pure $ Done $ primitiveCtor "unit" Empty
     MacroActionIntroducer -> do
       sc <- freshScope "User introduction scope"
       pure $ Done $
-        ValueClosure $ HO \(ValueCtor ctor []) -> ValueClosure $ HO \(ValueSyntax stx) ->
+        ValueClosure $ HO \(ValueCtor ctor Empty) -> ValueClosure $ HO \(ValueSyntax stx) ->
         ValueSyntax
           case view (constructorName . constructorNameText) ctor of
             "add" -> addScope' sc stx
@@ -1455,11 +1446,11 @@ interpretMacroAction prob =
             _ -> error "Impossible!"
     MacroActionWhichProblem -> do
       case prob of
-        ModuleDest {} -> pure $ Done $ primitiveCtor "module" []
-        DeclTreeDest {} -> pure $ Done $ primitiveCtor "declaration" []
-        TypeDest {} -> pure $ Done $ primitiveCtor "type" []
-        ExprDest t _stx -> pure $ Done $ primitiveCtor "expression" [ValueType t]
-        PatternDest {} -> pure $ Done $ primitiveCtor "pattern" []
-        TypePatternDest {} -> pure $ Done $ primitiveCtor "type-pattern" []
+        ModuleDest {} -> pure $ Done $ primitiveCtor "module" Empty
+        DeclTreeDest {} -> pure $ Done $ primitiveCtor "declaration" Empty
+        TypeDest {} -> pure $ Done $ primitiveCtor "type" Empty
+        ExprDest t _stx -> pure $ Done $ primitiveCtor "expression" (Seq.singleton $ ValueType t)
+        PatternDest {} -> pure $ Done $ primitiveCtor "pattern" Empty
+        TypePatternDest {} -> pure $ Done $ primitiveCtor "type-pattern" Empty
     MacroActionTypeCase env loc ty cases -> do
       pure $ StuckOnType loc ty env cases []

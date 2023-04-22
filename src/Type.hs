@@ -15,6 +15,8 @@ import Control.Lens
 import Control.Monad
 import Data.Foldable
 import Data.Data (Data)
+import Data.Sequence (Seq(..))
+import qualified Data.Sequence as Seq
 import Numeric.Natural
 
 import Alpha
@@ -53,7 +55,7 @@ makePrisms ''TypeConstructor
 
 data TyF t = TyF
   { outermostCtor :: TypeConstructor
-  , typeArgs      :: [t]
+  , typeArgs      :: Seq t
   }
   deriving (Data, Eq, Foldable, Functor, Show, Traversable)
 makeLenses ''TyF
@@ -86,7 +88,7 @@ instance Ixed (TypeStore t) where
 instance At (TypeStore t) where
   at x f (TypeStore env) = TypeStore <$> at x f env
 
-data Scheme t = Scheme [Kind] t
+data Scheme t = Scheme (Seq Kind) t
   deriving (Data, Eq, Show)
 makeLenses ''Scheme
 
@@ -99,7 +101,7 @@ instance AlphaEq a => AlphaEq (TyF a) where
   alphaCheck (TyF ctor1 args1) (TyF ctor2 args2) = do
     guard (ctor1 == ctor2)
     guard (length args1 == length args2)
-    for_ (zip args1 args2) (uncurry alphaCheck)
+    for_ (Seq.zip args1 args2) (uncurry alphaCheck)
 
 instance ShortShow a => ShortShow (TyF a) where
   shortShow t = show (fmap shortShow t)
@@ -114,22 +116,22 @@ class TyLike a arg | a -> arg where
   tMacro      :: arg -> a
   tIO         :: arg -> a
   tType       :: a
-  tDatatype   :: Datatype -> [arg] -> a
-  tSchemaVar  :: Natural -> [arg] -> a
+  tDatatype   :: Datatype -> Seq arg -> a
+  tSchemaVar  :: Natural -> Seq arg -> a
   tMetaVar    :: MetaPtr -> a
 
 instance TyLike (TyF a) a where
-  tSyntax         = TyF TSyntax []
-  tInteger        = TyF TInteger []
-  tString         = TyF TString []
-  tOutputPort     = TyF TOutputPort []
-  tFun1 t1 t2     = TyF TFun [t1, t2]
-  tMacro t        = TyF TMacro [t]
-  tIO t           = TyF TIO [t]
-  tType           = TyF TType []
+  tSyntax         = TyF TSyntax mempty
+  tInteger        = TyF TInteger mempty
+  tString         = TyF TString mempty
+  tOutputPort     = TyF TOutputPort mempty
+  tFun1 t1 t2     = TyF TFun (t1 :<| pure t2)
+  tMacro t        = TyF TMacro (Seq.singleton t)
+  tIO t           = TyF TIO (Seq.singleton t)
+  tType           = TyF TType mempty
   tDatatype x ts  = TyF (TDatatype x) ts
   tSchemaVar x ts = TyF (TSchemaVar x) ts
-  tMetaVar x      = TyF (TMetaVar x) []
+  tMetaVar x      = TyF (TMetaVar x) mempty
 
 instance TyLike Ty Ty where
   tSyntax         = Ty $ tSyntax
