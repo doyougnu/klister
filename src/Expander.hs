@@ -625,6 +625,7 @@ initializeKernel outputChannel = do
     exprPrims :: [(Text, Ty -> SplitCorePtr -> Syntax -> Expand ())]
     exprPrims =
       [ ("error", Prims.err)
+      , ("break", Prims.break)
       , ("the", Prims.the)
       , ("let", Prims.letExpr)
       , ("flet", Prims.flet)

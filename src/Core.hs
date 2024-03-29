@@ -165,6 +165,7 @@ data CoreF typePat pat core
   | CoreInteger Integer
   | CoreString Text
   | CoreError core
+  | CoreBreak core
   | CorePureMacro core                  -- :: a -> Macro a
   | CoreBindMacro core core             -- :: Macro a -> (a -> Macro b) -> Macro b
   | CoreSyntaxError (SyntaxError core)  -- :: Macro a
@@ -213,6 +214,8 @@ mapCoreF _f _g _h (CoreString str) =
   CoreString str
 mapCoreF _f _g h (CoreError msg) =
   CoreError (h msg)
+mapCoreF _f _g h (CoreBreak msg) =
+  CoreBreak (h msg)
 mapCoreF _f _g h (CorePureMacro core) =
   CorePureMacro (h core)
 mapCoreF _f _g h (CoreBindMacro act k) =
@@ -269,6 +272,8 @@ traverseCoreF _f _g _h (CoreString str) =
   pure $ CoreString str
 traverseCoreF _f _g h (CoreError msg) =
   CoreError <$> h msg
+traverseCoreF _f _g h (CoreBreak msg) =
+  CoreBreak <$> h msg
 traverseCoreF _f _g h (CorePureMacro core) =
   CorePureMacro <$> h core
 traverseCoreF _f _g h (CoreBindMacro act k) =
@@ -521,6 +526,11 @@ instance (ShortShow typePat, ShortShow pat, ShortShow core) =>
   shortShow (CoreError what)
     = "(Error "
    ++ shortShow what
+   ++ ")"
+  shortShow (CoreBreak expr)
+  -- DYG: is this a prompt
+    = "(Break "
+   ++ shortShow expr
    ++ ")"
   shortShow (CorePureMacro x)
     = "(PureMacro "

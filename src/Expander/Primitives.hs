@@ -22,6 +22,7 @@ module Expander.Primitives
   , bindMacro
   , consListSyntax
   , dataCase
+  , break
   , emptyListSyntax
   , err
   , flet
@@ -236,6 +237,12 @@ err _t dest stx = do
   Stx _ _ (_, msg) <- mustHaveEntries stx
   msgDest <- schedule tSyntax msg
   linkExpr dest $ CoreError msgDest
+
+break :: ExprPrim
+break _t dest stx = do
+  Stx _ _ (_, msg) <- mustHaveEntries stx
+  msgDest <- schedule tSyntax msg
+  linkExpr dest $ CoreBreak msgDest
 
 the :: ExprPrim
 the t dest stx = do
