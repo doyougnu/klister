@@ -6,7 +6,16 @@
 {-# LANGUAGE ParallelListComp #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
-module Pretty (Doc, Pretty(..), string, text, viaShow, (<+>), (<>), align, hang, line, group, vsep, hsep, VarInfo(..), pretty, prettyPrint, prettyPrintLn, prettyEnv, prettyPrintEnv) where
+module Pretty
+  ( Doc
+  , Pretty(..)
+  , string
+  , text
+  , viaShow
+  , (<+>), (<>), align, hang, line, group, vsep, hsep
+  , VarInfo(..)
+  , pretty, prettyPrint, prettyPrintLn, prettyEnv, prettyPrintEnv
+  ) where
 
 import Control.Lens hiding (List)
 import Control.Monad.State
@@ -28,7 +37,7 @@ import Binding.Info
 import Core
 import Datatype
 import Env
-import Evaluator (EvalResult(..), EvalError(..), TypeError(..))
+import Evaluator (EvalResult(..), EvalError(..), TypeError(..), Kont(..), EState(..))
 import Kind
 import Module
 import ModuleName
@@ -744,6 +753,7 @@ instance Pretty VarInfo EvalError where
     ppV <- pp env v
     pure $ text "Attempt to bind identifier to non-value: " <+> ppV
 
+
 instance Pretty VarInfo EvalResult where
   pp env (ExampleResult loc valEnv coreExpr sch val) = do
     let varEnv = fmap (const ()) valEnv
@@ -793,7 +803,7 @@ instance Pretty VarInfo ScopeSet where
       ppSet s = do
         ppS <- mapM (pp env) (Set.toList s)
         pure $ text "{" <> commaSep ppS <> text "}"
-      
+
       ppStore :: Store Phase (Set Scope) -> State Renumbering (Doc VarInfo)
       ppStore m = do
         ppM <- for (St.toList m) $ \(p, scopes) -> do
@@ -802,4 +812,24 @@ instance Pretty VarInfo ScopeSet where
         pure $ group (vsep ppM)
 
 instance Pretty VarInfo KlisterPathError where
-  pp _ = pure . ppKlisterPathError
+  pp _ = ppKlisterPathError
+
+-- -----------------------------------------------------------------------------
+-- StackTraces
+
+newtype StackTrace = StackTrace { unStackTrace :: EState }
+
+instance Pretty VarInfo StackTrace where
+  pp env st = printStack env (unStackTrace st)
+
+printStack :: Env Var () -> EState -> Doc VarInfo
+printStack e (Er err env k) = hang 2 $ pp e err
+
+-- printKont :: Kont -> Doc ann
+-- printKont = align . vsep
+
+-- printErr :: EvalError -> Doc ann
+-- printErr = pretty
+
+-- printEnv :: VEnv -> Doc ann
+-- printEnv = pretty
