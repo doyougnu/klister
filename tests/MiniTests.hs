@@ -14,25 +14,6 @@ trivialUserMacro = "[let-syntax \n\
                    \       [pure [quote [lambda [x] x]]]]] \n\
                    \  m]"
 
-letMacro :: Text
-letMacro = "[let-syntax \n\
-            \  [let1 [lambda [stx] \n\
-            \          (syntax-case stx \n\
-            \            [[list [_ binder body]] \n\
-            \             (syntax-case binder \n\
-            \               [[list [x e]] \n\
-            \                {- [[lambda [x] body] e] -} \n\
-            \                [pure [list-syntax \n\
-            \                        [[list-syntax \n\
-            \                           [[ident-syntax 'lambda stx] \n\
-            \                            [list-syntax [x] stx] \n\
-            \                            body] \n\
-            \                           stx] \n\
-            \                         e] \n\
-            \                        stx]]])])]] \n\
-            \  [let1 [x [lambda [x] x]] \n\
-            \    x]]"
-
 unboundVarLet :: Text
 unboundVarLet = "[let-syntax \
                 \  [m [lambda [_] \

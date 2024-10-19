@@ -126,9 +126,6 @@ miniTests =
         , ( "Trivial user macro"
           , trivialUserMacro, lam $ \x -> x
           )
-        , ( "Let macro"
-          , letMacro, (lam $ \x -> x) `app` (lam $ \x -> x)
-          )
         ]
       ]
     expectedFailure =

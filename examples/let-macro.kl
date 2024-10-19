@@ -1,0 +1,19 @@
+#lang kernel
+
+(import (shift kernel 1))
+(import (shift "prim-syntax.kl" 1))
+
+(example
+  (let-syntax
+    (let1 (lambda (stx)
+      (syntax-case stx
+        ((list (_ binder body))
+          (syntax-case binder
+            ((list (x e))
+              (pure (list-syntax
+                ((list-syntax
+                  ((ident-syntax 'lambda stx)
+                    (list-syntax (x) stx)
+                      body) stx) e) stx))))))))
+              (let1 (x (lambda (x) x))
+                x)))
