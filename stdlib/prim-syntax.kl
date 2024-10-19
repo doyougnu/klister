@@ -17,4 +17,13 @@
                    (close-syntax a b c)))) ,synx) ,synx) (identifier-contents ,name)))]
         [_ (syntax-error '"ident-syntax: bad syntax" stx)]))]))
 
-(export ident-syntax)
+(define-macros
+  ([empty-list-syntax
+    (lambda (stx)
+      (case (open-syntax stx)
+      [(list-contents (:: _ (:: loc (nil))))
+      (pure
+        `(((close-syntax ,loc) ,loc) (list-contents (nil))))]
+        [_ (syntax-error '"empty-list-syntax: bad syntax" stx)]))]))
+
+(export ident-syntax my-empty-list-syntax)

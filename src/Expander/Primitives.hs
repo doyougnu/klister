@@ -22,7 +22,6 @@ module Expander.Primitives
   , bindMacro
   , consListSyntax
   , dataCase
-  , emptyListSyntax
   , err
   , flet
   , identEqual
@@ -376,13 +375,6 @@ quote t dest stx = do
   unify dest t tSyntax
   Stx _ _ (_, quoted) <- mustHaveEntries stx
   linkExpr dest $ CoreSyntax quoted
-
-emptyListSyntax :: ExprPrim
-emptyListSyntax t dest stx = do
-  unify dest t tSyntax
-  Stx _ _ (_, source) <- mustHaveEntries stx
-  sourceDest <- schedule tSyntax source
-  linkExpr dest $ CoreEmpty $ ScopedEmpty sourceDest
 
 consListSyntax :: ExprPrim
 consListSyntax t dest stx = do

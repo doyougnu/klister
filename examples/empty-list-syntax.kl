@@ -1,0 +1,6 @@
+#lang kernel
+
+(import "prim-syntax.kl")
+
+(example
+    (empty-list-syntax 'some-syntax))
