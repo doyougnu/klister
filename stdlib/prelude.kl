@@ -4,6 +4,7 @@
 (import "n-ary-app.kl")
 (import "optional-parens.kl")
 (import "quasiquote.kl")
+(import "prim-syntax.kl")
 
 (defun id (x) x)
 (define const (lambda (x y) x))

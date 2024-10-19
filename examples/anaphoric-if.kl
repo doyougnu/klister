@@ -3,6 +3,7 @@
 (import (shift "prelude.kl" 1))
 (import "define-syntax-rule.kl")
 (import "list.kl")
+(import (shift "prim-syntax.kl" 1))
 
 (define-macro (if-non-empty cond then else)
   -- Consider the following simpler implementation.

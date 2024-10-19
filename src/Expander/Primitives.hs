@@ -26,7 +26,6 @@ module Expander.Primitives
   , err
   , flet
   , identEqual
-  , identSyntax
   , lambda
   , letExpr
   , letSyntax
@@ -377,14 +376,6 @@ quote t dest stx = do
   unify dest t tSyntax
   Stx _ _ (_, quoted) <- mustHaveEntries stx
   linkExpr dest $ CoreSyntax quoted
-
-identSyntax :: ExprPrim
-identSyntax t dest stx = do
-  unify dest t tSyntax
-  Stx _ _ (_, someId, source) <- mustHaveEntries stx
-  idDest <- schedule tSyntax someId
-  sourceDest <- schedule tSyntax source
-  linkExpr dest $ CoreIdent $ ScopedIdent idDest sourceDest
 
 emptyListSyntax :: ExprPrim
 emptyListSyntax t dest stx = do

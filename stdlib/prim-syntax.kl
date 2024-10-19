@@ -1,0 +1,20 @@
+#lang kernel
+
+(import (shift kernel 1))
+(import (shift "quasiquote.kl" 1))
+
+-- (ident-syntax 'name syntax)
+-- constructs an identifier (its first input) that is bound to input value
+(define-macros
+  ([ident-syntax
+    (lambda (stx)
+      (case (open-syntax stx)
+      [(list-contents (:: _ (:: name (:: synx (nil)))))
+            (pure
+            `((((lambda (a)
+               (lambda (b)
+                 (lambda (c)
+                   (close-syntax a b c)))) ,synx) ,synx) (identifier-contents ,name)))]
+        [_ (syntax-error '"ident-syntax: bad syntax" stx)]))]))
+
+(export ident-syntax)
