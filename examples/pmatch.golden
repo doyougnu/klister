@@ -1,7 +1,11 @@
-#[pmatch.kl:91.32-91.33]<t> : Syntax
-#[pmatch.kl:92.36-92.37]<t> : Syntax
-#[pmatch.kl:93.29-93.30]<t> : Syntax
-#[pmatch.kl:94.48-94.49]<t> : Syntax
+#[pmatch.kl:91.32-91.33]
+ <t> : Syntax
+#[pmatch.kl:92.36-92.37]
+ <t> : Syntax
+#[pmatch.kl:93.29-93.30]
+ <t> : Syntax
+#[pmatch.kl:94.48-94.49]
+ <t> : Syntax
 (zero) : Nat
 (zero) : Nat
 (zero) : Nat

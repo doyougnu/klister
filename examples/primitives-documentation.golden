@@ -26,8 +26,11 @@
 (pair "string-downcase" #<closure>) : (Pair String (String → String))
 (pair "string-titlecase" #<closure>) : (Pair String (String → String))
 (pair "string-foldcase" #<closure>) : (Pair String (String → String))
-(pair "pure-IO" #<closure>) : ∀(α : *). (Pair String (α → (IO α)))
-(pair "bind-IO" #<closure>) : ∀(α : *) (β : *). (Pair String ((IO α) → ((α → (IO β)) → (IO β))))
+(pair "pure-IO" #<closure>) : ∀(α : *).
+ (Pair String (α → (IO α)))
+(pair "bind-IO" #<closure>) : ∀(α : *)
+ (β : *).
+ (Pair String ((IO α) → ((α → (IO β)) → (IO β))))
 (flip) : ScopeAction
 (add) : ScopeAction
 (remove) : ScopeAction
@@ -39,12 +42,20 @@
 (type) : Problem
 (pattern) : Problem
 (type-pattern) : Problem
-(nothing) : ∀(α : *). (Maybe α)
-(nil) : ∀(α : *). (List α)
+(nothing) : ∀(α : *).
+ (Maybe α)
+(nil) : ∀(α : *).
+ (List α)
 make-introducer : (Macro (ScopeAction → (Syntax → Syntax)))
 which-problem : (Macro Problem)
-(pair "id" #<closure>) : ∀(α : *). (Pair String (α → α))
-(pair "const" #<closure>) : ∀(α : *) (β : *). (Pair String (α → (β → α)))
-(pair "compose" #<closure>) : ∀(α : *) (β : *) (γ : *). (Pair String ((α → β) → ((γ → α) → (γ → β))))
+(pair "id" #<closure>) : ∀(α : *).
+ (Pair String (α → α))
+(pair "const" #<closure>) : ∀(α : *)
+ (β : *).
+ (Pair String (α → (β → α)))
+(pair "compose" #<closure>) : ∀(α : *)
+ (β : *)
+ (γ : *).
+ (Pair String ((α → β) → ((γ → α) → (γ → β))))
 (pair "stdout" #<output port>) : (Pair String Output-Port)
 (pair "write" #<closure>) : (Pair String (Output-Port → (String → (IO Unit))))

@@ -1,2 +1,4 @@
-#[let.kl:27.20-27.24]<five> : Syntax
-#[let.kl:33.15-33.22]<(five two)> : Syntax
+#[let.kl:27.20-27.24]
+ <five> : Syntax
+#[let.kl:33.15-33.22]
+ <(five two)> : Syntax

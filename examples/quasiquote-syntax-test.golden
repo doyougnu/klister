@@ -2,11 +2,19 @@
  <((quasiquote (is quasiquote))
    (unquote (is unquote))
    (unquote-splicing (is unquote-splicing)))> : Syntax
-#[quasiquote-syntax-test.kl:11.16-11.23]<nothing> : Syntax
-#[quasiquote-syntax-test.kl:14.11-14.16]<thing> : Syntax
-#[quasiquote-syntax-test.kl:11.16-11.23]<nothing> : Syntax
-#[quasiquote-syntax-test.kl:17.11-17.18]<(thing)> : Syntax
-#[quasiquote-syntax-test.kl:18.11-18.19]<(nothing)> : Syntax
-#[quasiquote-syntax-test.kl:20.11-20.45]<(list-syntax (nothing thing) thing)> : Syntax
-#[quasiquote-syntax-test.kl:22.11-22.48]<(list-syntax (nothing thing ()) thing)> : Syntax
-#[quasiquote-syntax-test.kl:24.11-24.31]<(thing nothing thing)> : Syntax
+#[quasiquote-syntax-test.kl:11.16-11.23]
+ <nothing> : Syntax
+#[quasiquote-syntax-test.kl:14.11-14.16]
+ <thing> : Syntax
+#[quasiquote-syntax-test.kl:11.16-11.23]
+ <nothing> : Syntax
+#[quasiquote-syntax-test.kl:17.11-17.18]
+ <(thing)> : Syntax
+#[quasiquote-syntax-test.kl:18.11-18.19]
+ <(nothing)> : Syntax
+#[quasiquote-syntax-test.kl:20.11-20.45]
+ <(list-syntax (nothing thing) thing)> : Syntax
+#[quasiquote-syntax-test.kl:22.11-22.48]
+ <(list-syntax (nothing thing ()) thing)> : Syntax
+#[quasiquote-syntax-test.kl:24.11-24.31]
+ <(thing nothing thing)> : Syntax
