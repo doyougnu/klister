@@ -12,7 +12,7 @@ module Pretty
   , string
   , text
   , viaShow
-  , (<+>), (<>), align, hang, line, group, vsep, hsep
+  , (<+>), (<>), align, hang, line, group, vsep, hsep, hardline
   , VarInfo(..)
   , pretty, prettyPrint, prettyPrintLn, prettyEnv, prettyPrintEnv
   ) where
@@ -687,4 +687,3 @@ instance Pretty VarInfo ScopeSet where
 
 instance Pretty VarInfo KlisterPathError where
   pp _ = ppKlisterPathError
-
