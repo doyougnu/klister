@@ -322,9 +322,46 @@ instance Pretty VarInfo TypeCheckError where
 
 
 instance Pretty VarInfo SyntacticCategory where
-  pp _env ExpressionCat = pure $ text "an expression"
-  pp _env ModuleCat = pure $ text "a module"
-  pp _env TypeCat = pure $ text "a type"
-  pp _env DeclarationCat = pure $ text "a top-level declaration or example"
-  pp _env PatternCaseCat = pure $ text "a pattern"
-  pp _env TypePatternCaseCat = pure $ text "a typecase pattern"
+  pp _env ExpressionCat = text "an expression"
+  pp _env ModuleCat = text "a module"
+  pp _env TypeCat = text "a type"
+  pp _env DeclarationCat = text "a top-level declaration or example"
+  pp _env PatternCaseCat = text "a pattern"
+  pp _env TypePatternCaseCat = text "a typecase pattern"
+
+
+-- -----------------------------------------------------------------------------
+-- StackTraces
+
+newtype StackTrace = StackTrace { unStackTrace :: EState }
+
+instance Pretty VarInfo StackTrace where
+  pp env st = pp env (unStackTrace st)
+
+instance Pretty VarInfo EState where
+  pp env st = printStack env st
+
+instance Pretty VarInfo Kont where
+  pp env k = hardline <> text "----" <+> printKont env k
+
+-- printStack :: p -> EState -> Doc ann
+printStack e (Er err env k) =
+  vsep [ pp e err
+       , text "stack trace:"
+       ] <> pp e k
+
+printStack e (Up val env k)     = hang 2 $ text "up"
+printStack e (Down thing env k) = hang 2 $ text "down"
+
+printKont _ Halt              = text "Halt"
+printKont e (InArg fun env k) = text "with function" <+> pp e fun <> pp e k
+printKont e (InFun arg env k) = text "with arg"      <+> pp e arg <> pp e k
+
+-- printErr :: EvalError -> Doc ann
+-- printErr = pretty
+
+-- printEnv :: VEnv -> Doc ann
+-- printEnv = pretty
+
+-- START: implement printer for the rest of kont indentation was clobbered by
+-- the 'group' operation
