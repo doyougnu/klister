@@ -523,6 +523,15 @@ evalAsType v on_success on_error =
     ValueType t -> on_success t
     other       -> on_error (evalErrorType "type" other)
 
+applyInEnv :: VEnv -> Closure -> Value -> Either EState Value
+applyInEnv old_env (FO (FOClosure {..})) value =
+  let env = Env.insert _closureVar
+                       _closureIdent
+                       value
+                       (_closureEnv)
+  in evaluateIn env _closureBody
+applyInEnv _ (HO prim) value = return $! prim value
+
 apply :: Closure -> Value -> Either EState Value
 apply (FO (FOClosure {..})) value =
   let env = Env.insert _closureVar
