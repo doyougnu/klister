@@ -423,11 +423,12 @@ initializeKernel outputChannel = do
       , ( "close-syntax"
         , Scheme [] $
           tFun [tSyntax, tSyntax, Prims.primitiveDatatype "Syntax-Contents" [tSyntax]] tSyntax
-        , ValueClosure $ HO "close-syntax" $
+        , let n = "close-syntax"
+          in ValueClosure $ HO n $
           \(ValueSyntax locStx) ->
-            ValueClosure $ HO "close-syntax2" $
+            ValueClosure $ HO n $
             \(ValueSyntax scopesStx) ->
-              ValueClosure $ HO "close-syntax3" $
+              ValueClosure $ HO n $
               -- N.B. Assuming correct constructors
               \(ValueCtor ctor [arg]) ->
                 let close x = Syntax $ Stx (view (unSyntax . stxScopeSet) scopesStx) (stxLoc locStx) x
@@ -457,9 +458,9 @@ initializeKernel outputChannel = do
       ] ++
       [ ( "string=?"
         , Scheme [] $ tFun [tString, tString] (Prims.primitiveDatatype "Bool" [])
-        , ValueClosure $ HO "string=? operator" $
+        , ValueClosure $ HO "string=?" $
           \(ValueString str1) ->
-            ValueClosure $ HO "string=? operand" $
+            ValueClosure $ HO "string=?" $
             \(ValueString str2) ->
               if str1 == str2
                 then primitiveCtor "true" []
@@ -467,9 +468,9 @@ initializeKernel outputChannel = do
         )
       , ( "string-append"
         , Scheme [] $ tFun [tString, tString] tString
-        , ValueClosure $ HO "string-append-l" $
+        , ValueClosure $ HO "string-append" $
           \(ValueString str1) ->
-            ValueClosure $ HO "string-append-r" $
+            ValueClosure $ HO "string-append" $
             \(ValueString str2) ->
               ValueString (str1 <> str2)
         )
@@ -482,11 +483,12 @@ initializeKernel outputChannel = do
       , ( "substring"
         , Scheme [] $
           tFun [tInteger, tInteger, tString] (Prims.primitiveDatatype "Maybe" [tString])
-        , ValueClosure $ HO "substing" $
+        , let substring_name = "substring"
+          in ValueClosure $ HO substring_name $
           \(ValueInteger (fromInteger -> start)) ->
-            ValueClosure $ HO "substring2" $
+            ValueClosure $ HO substring_name $
             \(ValueInteger (fromInteger -> len)) ->
-              ValueClosure $ HO "substring3" $
+              ValueClosure $ HO substring_name $
               \(ValueString str) ->
                 if | start < 0 || start       >= T.length str -> primitiveCtor "nothing" []
                    | len   < 0 || start + len >  T.length str -> primitiveCtor "nothing" []
@@ -516,26 +518,26 @@ initializeKernel outputChannel = do
       ] ++
       [ ( "string" <> name <> "?"
         , Scheme [] $ tFun [tString, tString] (Prims.primitiveDatatype "Bool" [])
-        , Prims.binaryStringPred fun
+        , Prims.binaryStringPred name fun
         )
       | (name, fun) <- [("<", (<)), ("<=", (<=)), (">", (>)), (">=", (>=)), ("=", (==)), ("/=", (/=))]
       ] ++
       [
         ( name
         , Scheme [] $ tFun [tInteger] tInteger
-        , Prims.unaryIntegerPrim fun
+        , Prims.unaryIntegerPrim name fun
         )
       | (name, fun) <- [("abs", abs), ("negate", negate)]
       ] ++
       [ ( name
         , Scheme [] $ tFun [tInteger, tInteger] tInteger
-        , Prims.binaryIntegerPrim fun
+        , Prims.binaryIntegerPrim name fun
         )
       | (name, fun) <- [("+", (+)), ("-", (-)), ("*", (*)), ("/", div)]
       ] ++
       [ ( name
         , Scheme [] $ tFun [tInteger, tInteger] (Prims.primitiveDatatype "Bool" [])
-        , Prims.binaryIntegerPred fun
+        , Prims.binaryIntegerPred name fun
         )
       | (name, fun) <- [("<", (<)), ("<=", (<=)), (">", (>)), (">=", (>=)), ("=", (==)), ("/=", (/=))]
       ] ++
@@ -549,8 +551,8 @@ initializeKernel outputChannel = do
                , tFun [tSchemaVar 0 []] (tIO (tSchemaVar 1 []))
                ]
                (tIO (tSchemaVar 1 []))
-        , ValueClosure $ HO "action" $ \(ValueIOAction mx) -> do
-            ValueClosure $ HO "closure" $ \(ValueClosure f) -> do
+        , ValueClosure $ HO "bind-IO" $ \(ValueIOAction mx) -> do
+            ValueClosure $ HO "bind-IO" $ \(ValueClosure f) -> do
               ValueIOAction $ do
                 vx <- mx
                 vioy <- case f of
@@ -1450,7 +1452,7 @@ interpretMacroAction prob =
     MacroActionIntroducer -> do
       sc <- freshScope "User introduction scope"
       pure $ Done $
-        ValueClosure $ HO "one" \(ValueCtor ctor []) -> ValueClosure $ HO "two" \(ValueSyntax stx) ->
+        ValueClosure $ HO "MacroActionValue" \(ValueCtor ctor []) -> ValueClosure $ HO "MacroActionContinuation" \(ValueSyntax stx) ->
         ValueSyntax
           case view (constructorName . constructorNameText) ctor of
             "add" -> addScope' sc stx

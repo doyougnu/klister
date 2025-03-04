@@ -747,36 +747,36 @@ primitiveDatatype name args =
                     }
   in tDatatype dt args
 
-unaryIntegerPrim :: (Integer -> Integer) -> Value
-unaryIntegerPrim f =
-  ValueClosure $ HO "TODO:Jeff:WHAT-TO-PUT-HERE" $
+unaryIntegerPrim :: Text -> (Integer -> Integer) -> Value
+unaryIntegerPrim name f =
+  ValueClosure $ HO name $
   \(ValueInteger i) ->
     ValueInteger (f i)
 
-binaryIntegerPrim :: (Integer -> Integer -> Integer) -> Value
-binaryIntegerPrim f =
-  ValueClosure $ HO "bil" $
+binaryIntegerPrim :: Text -> (Integer -> Integer -> Integer) -> Value
+binaryIntegerPrim name f =
+  ValueClosure $ HO name $
   \(ValueInteger i1) ->
-    ValueClosure $ HO "bir" $
+    ValueClosure $ HO name $
     \(ValueInteger i2) ->
       ValueInteger (f i1 i2)
 
-binaryIntegerPred :: (Integer -> Integer -> Bool) -> Value
-binaryIntegerPred f =
-  ValueClosure $ HO "bipl" $
+binaryIntegerPred :: Text -> (Integer -> Integer -> Bool) -> Value
+binaryIntegerPred name f =
+  ValueClosure $ HO name $
   \(ValueInteger i1) ->
-    ValueClosure $ HO "bipr" $
+    ValueClosure $ HO name $
     \(ValueInteger i2) ->
       if f i1 i2
         then primitiveCtor "true" []
         else primitiveCtor "false" []
 
 
-binaryStringPred :: (Text -> Text -> Bool) -> Value
-binaryStringPred f =
-  ValueClosure $ HO "bsp-l" $
+binaryStringPred :: Text -> (Text -> Text -> Bool) -> Value
+binaryStringPred name f =
+  ValueClosure $ HO name $
   \(ValueString str1) ->
-    ValueClosure $ HO "bsp-r" $
+    ValueClosure $ HO name $
     \(ValueString str2) ->
       if f str1 str2
         then primitiveCtor "true" []
