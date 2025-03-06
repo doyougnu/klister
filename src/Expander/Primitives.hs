@@ -65,7 +65,6 @@ module Expander.Primitives
 import Control.Lens hiding (List)
 import Control.Monad.IO.Class
 import Control.Monad
-import Control.Monad.Except
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Traversable

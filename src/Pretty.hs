@@ -476,7 +476,7 @@ instance (Pretty VarInfo s, Pretty VarInfo t, PrettyBinder VarInfo a, Pretty Var
       ppArgs <- mapM (pp env) args
       pure $ case ppArgs of
         [] -> text c
-        more -> hang 2 $ text c <+> group (vsep ppArgs)
+        _more -> hang 2 $ text c <+> group (vsep ppArgs)
     pure (hang 2 $ group $
             vsep ( text "data" <+> text x <+>
                    hsep [ parens (text α <+> ":" <+> kind)
@@ -677,8 +677,8 @@ instance Pretty VarInfo Phase where
 
 instance Pretty VarInfo a => Pretty VarInfo (World a) where
   pp env w = do
-    ppModules <- for (HM.toList (view worldModules w)) $ \(_modName, mod) -> do
-      pp env mod
+    ppModules <- for (HM.toList (view worldModules w)) $ \(_modName, modul) -> do
+      pp env modul
     ppVisited <- for (HM.toList (view worldVisited w)) $ \(modName, phases) -> do
       ppModName <- pp env modName
       ppPhases <- mapM (pp env) (Set.toList phases)
@@ -999,6 +999,9 @@ printKont e (InSyntaxErrorMessage _ _ k) = pp e k
 printKont e (InSyntaxErrorLocations _ _ _ _ k) = pp e k
 
 -------------------------- stack trace helpers ---------------------------------
+do_case
+  :: (PrettyBinder ann a1, Pretty ann a2)
+  => Env Var () -> (a1, a2) -> StateT Renumbering Identity (Doc ann)
 do_case e c = do
   cse  <- fst <$> ppBind e (fst c)
   body <- pp e (snd c)

@@ -80,7 +80,6 @@ module Evaluator
   , apply
   , doTypeCase
   , try
-  , projectError
   , projectKont
   , constructErrorType
   ) where
@@ -701,10 +700,6 @@ erroneousValue  _                     =
   error $ mconcat [ "erroneousValue: "
                   , "Evaluator concluded in an error that did not return a value"
                   ]
-
-projectError :: EState -> EvalError
-projectError (Er err _env _kont) = err
-projectError _                   = error "projectError not used on an error!"
 
 projectKont :: EState -> Kont
 projectKont (Er _ _ k)   = k
