@@ -1410,7 +1410,7 @@ interpretMacroAction prob =
             Right v  ->
               case v of
                 ValueMacroAction act -> interpretMacroAction prob act
-                other -> debug $ ValueNotMacro (Up other mempty Halt)
+                other -> debug $ ValueNotMacro (Up other Halt)
     MacroActionSyntaxError syntaxError ->
       debug $ MacroRaisedSyntaxError syntaxError
     MacroActionIdentEq how v1 v2 -> do

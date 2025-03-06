@@ -1,5 +1,5 @@
 Error at phase p0:
-    error-in-bind-head.kl:3.29-3.30: e
+    error-in-bind-head.kl:4.22-4.33: Im-an-error
     stack trace:
     ---- in pure macro
     ---- in bind macro head

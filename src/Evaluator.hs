@@ -252,9 +252,9 @@ step (Up v k) =
       (\err  -> Er err env kont)
 
     -- Case passthroughs, see the Note [InCasePattern]
-    (InPrim _ kont)                   -> Up v e kont
-    (InCasePattern _ kont)            -> Up v e kont
-    (InDataCasePattern _ kont)        -> Up v e kont
+    (InPrim _ kont)                   -> Up v kont
+    (InCasePattern _ kont)            -> Up v kont
+    (InDataCasePattern _ kont)        -> Up v kont
 
     -- Idents
     (InIdent scope env kont) -> case v of
@@ -525,15 +525,6 @@ evalAsType v on_success on_error =
     ValueType t -> on_success t
     other       -> on_error (evalErrorType "type" other)
 
-applyInEnv :: VEnv -> Closure -> Value -> Either EState Value
-applyInEnv _old_env (FO (FOClosure {..})) value =
-  let env = Env.insert _closureVar
-                       _closureIdent
-                       value
-                       (_closureEnv)
-  in evaluateIn env _closureBody
-applyInEnv _ (HO _n prim) value = return $! prim value
-
 apply :: Closure -> Value -> Either EState Value
 apply (FO (FOClosure {..})) value =
   let env = Env.insert _closureVar
@@ -551,7 +542,7 @@ applyAsClosure e v_closure value k = case v_closure of
     where app (FO (FOClosure{..})) =
             let env = Env.insert _closureVar _closureIdent value _closureEnv
             in Down (unCore _closureBody) env k
-          app (HO n prim)            = Up (prim value) mempty (InPrim n k)
+          app (HO n prim)            = Up (prim value) (InPrim n k)
 
 -- | predicate to check for done state
 final :: EState -> Bool
@@ -716,6 +707,6 @@ projectError (Er err _env _kont) = err
 projectError _                   = error "projectError not used on an error!"
 
 projectKont :: EState -> Kont
-projectKont (Er _ _ k) = k
-projectKont (Up _ _ k) = k
+projectKont (Er _ _ k)   = k
+projectKont (Up _ k)     = k
 projectKont (Down _ _ k) = k

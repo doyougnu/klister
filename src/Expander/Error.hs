@@ -323,9 +323,9 @@ instance Pretty VarInfo TypeCheckError where
 
 
 instance Pretty VarInfo SyntacticCategory where
-  pp _env ExpressionCat = text "an expression"
-  pp _env ModuleCat = text "a module"
-  pp _env TypeCat = text "a type"
-  pp _env DeclarationCat = text "a top-level declaration or example"
-  pp _env PatternCaseCat = text "a pattern"
-  pp _env TypePatternCaseCat = text "a typecase pattern"
+  pp _env ExpressionCat      = pure $ text "an expression"
+  pp _env ModuleCat          = pure $ text "a module"
+  pp _env TypeCat            = pure $ text "a type"
+  pp _env DeclarationCat     = pure $ text "a top-level declaration or example"
+  pp _env PatternCaseCat     = pure $ text "a pattern"
+  pp _env TypePatternCaseCat = pure $ text "a typecase pattern"
