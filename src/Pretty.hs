@@ -872,7 +872,6 @@ printKont e (InCaseScrut cases loc _env k) = do
   kont <- pp e k
   cs <- mconcat <$> mapM (do_case e) cases
   return $ text "in case" <> l <> cs <> kont
--- TODO: DYG: is data|type case different than case in the concrete syntax?
 printKont e (InDataCaseScrut cases loc _env k) = do
   l <- pp e loc
   kont <- pp e k
@@ -907,7 +906,6 @@ printKont e (InDataCasePattern p k) = do
   return $ text "in data case pattern: " <> pat <> kont
 
 -- pairs
--- TODO: DYG: how to test the cons?
 printKont e (InConsHd scope hd _env k) = do
   h    <- pp e hd
   scpe <- pp e scope
@@ -942,7 +940,6 @@ printKont e (InList scope _todos dones _env k) = do
          ] <> kont
 
 -- idents
--- TODO: DYG: how to report and test these?
 printKont e (InIdent scope _env k) = do
   scpe <- pp e scope
   kont <- pp e k
