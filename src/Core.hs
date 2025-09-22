@@ -26,6 +26,8 @@ import Data.List
 import Data.Foldable
 import Data.Text (Text)
 import Data.Traversable
+import Data.Word
+import Data.Int
 
 import Alpha
 import Datatype
@@ -143,6 +145,13 @@ data ScopedInteger core = ScopedInteger
   deriving (Data, Eq, Functor, Foldable, Show, Traversable)
 makeLenses ''ScopedInteger
 
+data ScopedWord64 core = ScopedWord64
+  { _scopedWord64      :: core
+  , _scopedWord64Scope :: core
+  }
+  deriving (Data, Eq, Functor, Foldable, Show, Traversable)
+makeLenses ''ScopedWord64
+
 data ScopedString core = ScopedString
   { _scopedString      :: core
   , _scopedStringScope :: core
@@ -163,6 +172,14 @@ data CoreF typePat pat core
   | CoreCtor Constructor [core] -- ^ Constructor application
   | CoreDataCase SrcLoc core [(pat, core)]
   | CoreInteger Integer
+  -- | CoreInt64   Int64
+  -- | CoreInt32   Int32
+  -- | CoreInt16   Int16
+  -- | CoreInt8    Int8
+  | CoreWord64  Word64
+  -- | CoreWord32  Word32
+  -- | CoreWord16  Word16
+  -- | CoreWord8   Word8
   | CoreString Text
   | CoreError core
   | CorePureMacro core                  -- :: a -> Macro a
@@ -180,6 +197,7 @@ data CoreF typePat pat core
   | CoreCons (ScopedCons core)
   | CoreList (ScopedList core)
   | CoreIntegerSyntax (ScopedInteger core)
+  | CoreWord64Syntax (ScopedWord64 core)
   | CoreStringSyntax (ScopedString core)
   | CoreReplaceLoc core core
   | CoreTypeCase SrcLoc core [(typePat, core)]
@@ -209,6 +227,8 @@ mapCoreF _f g h (CoreDataCase loc scrut cases) =
   CoreDataCase loc (h scrut) [(g pat, h c) | (pat, c) <- cases]
 mapCoreF _f _g _h (CoreInteger i) =
   CoreInteger i
+mapCoreF _f _g _h (CoreWord64 i) =
+  CoreWord64 i
 mapCoreF _f _g _h (CoreString str) =
   CoreString str
 mapCoreF _f _g h (CoreError msg) =
@@ -241,6 +261,8 @@ mapCoreF _f _g h (CoreList args) =
   CoreList (fmap h args)
 mapCoreF _f _g h (CoreIntegerSyntax str) =
   CoreIntegerSyntax (fmap h str)
+mapCoreF _f _g h (CoreWord64Syntax str) =
+  CoreWord64Syntax (fmap h str)
 mapCoreF _f _g h (CoreStringSyntax str) =
   CoreStringSyntax (fmap h str)
 mapCoreF _f _g h (CoreReplaceLoc src dest) =
@@ -265,6 +287,8 @@ traverseCoreF _f g h (CoreDataCase loc scrut cases) =
   CoreDataCase loc <$> h scrut <*> for cases \ (pat, c) -> (,) <$> g pat <*> h c
 traverseCoreF _f _g _h (CoreInteger integer) =
   pure $ CoreInteger integer
+traverseCoreF _f _g _h (CoreWord64 wrd) =
+  pure $ CoreWord64 wrd
 traverseCoreF _f _g _h (CoreString str) =
   pure $ CoreString str
 traverseCoreF _f _g h (CoreError msg) =
@@ -297,6 +321,8 @@ traverseCoreF _f _g h (CoreList args) =
   CoreList <$> traverse h args
 traverseCoreF _f _g h (CoreIntegerSyntax arg) =
   CoreIntegerSyntax <$> traverse h arg
+traverseCoreF _f _g h (CoreWord64Syntax arg) =
+  CoreWord64Syntax <$> traverse h arg
 traverseCoreF _f _g h (CoreStringSyntax arg) =
   CoreStringSyntax <$> traverse h arg
 traverseCoreF _f _g h (CoreReplaceLoc src dest) =
@@ -516,6 +542,8 @@ instance (ShortShow typePat, ShortShow pat, ShortShow core) =>
    ++ ")"
   shortShow (CoreInteger i)
     = show i
+  shortShow (CoreWord64 i)
+    = show i
   shortShow (CoreString str)
     = "(String " ++ show str ++ ")"
   shortShow (CoreError what)
@@ -574,6 +602,10 @@ instance (ShortShow typePat, ShortShow pat, ShortShow core) =>
    ++ ")"
   shortShow (CoreIntegerSyntax scopedStr)
     = "(IntegerSyntax "
+   ++ shortShow scopedStr
+   ++ ")"
+  shortShow (CoreWord64Syntax scopedStr)
+    = "(Word64Syntax "
    ++ shortShow scopedStr
    ++ ")"
   shortShow (CoreStringSyntax scopedStr)
@@ -665,6 +697,14 @@ instance ShortShow core => ShortShow (ScopedList core) where
 instance ShortShow core => ShortShow (ScopedInteger core) where
   shortShow (ScopedInteger str scope)
     = "(ScopedInteger "
+   ++ shortShow str
+   ++ " "
+   ++ shortShow scope
+   ++ ")"
+
+instance ShortShow core => ShortShow (ScopedWord64 core) where
+  shortShow (ScopedWord64 str scope)
+    = "(ScopedWord64 "
    ++ shortShow str
    ++ " "
    ++ shortShow scope

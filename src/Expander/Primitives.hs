@@ -654,6 +654,7 @@ expandPatternCase t (Stx _ _ (lhs, rhs)) = do
       rhsDest <- withLocalVarType x' var strSch $ schedule t rhs'
       let patOut = SyntaxPatternInteger x' var
       return (patOut, rhsDest)
+    -- TODO: for word
     Syntax (Stx _ _ (List [Syntax (Stx _ _ (Id "string")),
                            patVar])) -> do
       (sc, x', var) <- prepareVar patVar

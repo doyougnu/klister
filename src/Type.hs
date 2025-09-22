@@ -39,6 +39,8 @@ instance Show MetaPtr where
 data TypeConstructor
   = TSyntax
   | TInteger
+  | TWord64
+  -- TODO: other fixnums
   | TString
   | TOutputPort
   | TFun

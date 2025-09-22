@@ -68,6 +68,7 @@ import Data.Data (Typeable)
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.List (foldl')
+import Data.Word
 
 import Datatype
 import Core
@@ -365,6 +366,7 @@ step (Down c env k)  =
     -- atoms
     (CoreString s)    -> Up (ValueString s) k
     (CoreInteger i)   -> Up (ValueInteger i) k
+    (CoreWord64 i)    -> Up (ValueWord64 i) k
     (CoreIntegerSyntax (ScopedInteger int scope)) -> Down (unCore int) env (InInteger scope env k)
     (CoreStringSyntax  (ScopedString  str scope)) -> Down (unCore str) env (InString scope env k)
     (CoreSyntax s)    -> Up (ValueSyntax s) k

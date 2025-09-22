@@ -6,6 +6,7 @@ import Control.Lens
 import Data.Text (Text)
 import qualified Data.Text as T
 import System.IO (Handle)
+import Data.Word
 
 import Core
 import Datatype
@@ -39,6 +40,7 @@ data Value
   | ValueIOAction (IO Value)
   | ValueOutputPort Handle
   | ValueInteger Integer
+  | ValueWord64  Word64
   | ValueCtor Constructor [Value]
   | ValueType Ty
   | ValueString Text
@@ -58,6 +60,7 @@ valueText (ValueMacroAction _) = "#<macro>"
 valueText (ValueIOAction _) = "#<IO>"
 valueText (ValueOutputPort _) = "#<ouptut port>"
 valueText (ValueInteger s) = "#!" <> T.pack (show s)
+valueText (ValueWord64 s)  = "#!" <> T.pack (show s)
 valueText (ValueCtor c args) =
   "(" <> view (constructorName . constructorNameText) c <> " " <>
   T.intercalate " " (map valueText args) <> ")"
@@ -72,6 +75,7 @@ describeVal (ValueMacroAction _) = "macro action"
 describeVal (ValueIOAction _) = "IO action"
 describeVal (ValueOutputPort _) = "output port"
 describeVal (ValueInteger _) = "integer"
+describeVal (ValueWord64 _) = "word"
 describeVal (ValueCtor c _args) =
   view (constructorName . constructorNameText) c
 describeVal (ValueType _) = "type"
