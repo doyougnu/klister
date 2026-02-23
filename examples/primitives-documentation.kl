@@ -86,7 +86,7 @@
 (example (pair "word8-shift"  word8-shift))
 (example (pair "word8->string" word8->string))
 (example (pair "word8-popcount" word8-popcount))
-(example (pair "word8-compliment" word8-compliment))
+(example (pair "word8-complement" word8-complement))
 
 -- Word16 : Type
 (example (pair "word16-+" word16-+))
@@ -107,7 +107,7 @@
 (example (pair "word16-shift"  word16-shift))
 (example (pair "word16->string" word16->string))
 (example (pair "word16-popcount" word16-popcount))
-(example (pair "word16-compliment" word16-compliment))
+(example (pair "word16-complement" word16-complement))
 
 -- Word32 : Type
 (example (pair "word32-+" word32-+))
@@ -128,7 +128,7 @@
 (example (pair "word32-shift"  word32-shift))
 (example (pair "word32->string" word32->string))
 (example (pair "word32-popcount" word32-popcount))
-(example (pair "word32-compliment" word32-compliment))
+(example (pair "word32-complement" word32-complement))
 
 -- Word64 : Type
 (example (pair "word64-+" word64-+))
@@ -149,7 +149,7 @@
 (example (pair "word64-shift"  word64-shift))
 (example (pair "word64->string" word64->string))
 (example (pair "word64-popcount" word64-popcount))
-(example (pair "word64-compliment" word64-compliment))
+(example (pair "word64-complement" word64-complement))
 
 -- Int8 : Type
 (example (pair "int8-+" int8-+))
@@ -170,7 +170,7 @@
 (example (pair "int8-shift"  int8-shift))
 (example (pair "int8->string" int8->string))
 (example (pair "int8-popcount" int8-popcount))
-(example (pair "int8-compliment" int8-compliment))
+(example (pair "int8-complement" int8-complement))
 
 -- Int16 : Type
 (example (pair "int16-+" int16-+))
@@ -191,7 +191,7 @@
 (example (pair "int16-shift"  int16-shift))
 (example (pair "int16->string" int16->string))
 (example (pair "int16-popcount" int16-popcount))
-(example (pair "int16-compliment" int16-compliment))
+(example (pair "int16-complement" int16-complement))
 
 -- Int32 : Type
 (example (pair "int32-+" int32-+))
@@ -212,7 +212,7 @@
 (example (pair "int32-shift"  int32-shift))
 (example (pair "int32->string" int32->string))
 (example (pair "int32-popcount" int32-popcount))
-(example (pair "int32-compliment" int32-compliment))
+(example (pair "int32-complement" int32-complement))
 
 -- Int64 : Type
 (example (pair "int64-+" int64-+))
@@ -233,7 +233,7 @@
 (example (pair "int64-shift"  int64-shift))
 (example (pair "int64->string" int64->string))
 (example (pair "int64-popcount" int64-popcount))
-(example (pair "int64-compliment" int64-compliment))
+(example (pair "int64-complement" int64-complement))
 
 -- Integer : Type
 (example (pair "+" +))
